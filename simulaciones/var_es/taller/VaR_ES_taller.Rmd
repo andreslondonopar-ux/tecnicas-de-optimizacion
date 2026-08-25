@@ -1,0 +1,222 @@
+---
+title: "VaR y ES — taller (ejemplos de clase)"
+output:
+  html_document:
+    df_print: paged
+---
+
+Este notebook resuelve los ejemplos trabajados en las diapositivas de clase
+(`VaR-y-ES.pdf`, Andrés Salas): primero el caso **paramétrico teórico** (sin
+datos, solo fórmulas cerradas de una normal), y después el caso **con datos
+reales** del S&P500, comparando la estimación paramétrica contra la
+histórica. Complementa al notebook de simulación Monte Carlo ya publicado
+(`VaR y ES.R`) — allí el riesgo se estima *simulando* muchos escenarios; acá
+se estima directamente de una fórmula cerrada o de la historia real del
+mercado, sin simular nada.
+
+## Configuración inicial
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, scales, quantmod, xts, PerformanceAnalytics)
+options(scipen = 999)
+```
+
+------------------------------------------------------------------------
+
+# Parte 1 — VaR paramétrico (fórmula cerrada)
+
+> "Se tiene un retorno de un activo que sigue una distribución normal con
+> una media de 0.04 y una desviación estándar de 0.18. Si se invierten USD
+> \$100,000 a un año, ¿cuál es el valor en riesgo?"
+
+**Por qué (teoría)**: si la distribución de los retornos se conoce (acá,
+normal), no hace falta simular nada — el VaR es directamente el percentil
+teórico de la pérdida. Definiendo la pérdida como $\mathcal{L} = -R$, se
+tiene $\mathcal{L} \sim \mathcal{N}(\mu=-4000,\ \sigma=18000)$ (en dólares,
+sobre un capital de \$100,000), y el $\text{VaR}(\alpha)$ es el valor que
+cumple $P[\mathcal{L} \ge \text{VaR}(\alpha)] = \alpha$ — es decir, el
+percentil $(1-\alpha)$ de la pérdida.
+
+```{r var-parametrico-teorico}
+capital <- 100000
+media <- 0.04
+sd_ret <- 0.18
+alpha <- 0.05
+
+# Percentil (1-alpha) de la perdida, como fraccion del capital:
+# -media - sd_ret*qnorm(alpha)  equivale a qnorm(1-alpha, mean=-media, sd=sd_ret)
+VaR_pct_teorico <- -media - sd_ret * qnorm(alpha)
+VaR_teorico <- capital * VaR_pct_teorico
+
+cat("VaR(0.05):", label_percent(accuracy = 0.01)(VaR_pct_teorico),
+    " = ", label_currency()(VaR_teorico), "\n")
+```
+
+**Respuesta:** el VaR al 95% es **`r label_currency()(VaR_teorico)`** — con
+95% de confianza, la inversión no perderá más de esa cantidad en el año.
+
+## Sensibilidad del VaR a α
+
+```{r var-vs-alpha}
+curva_var <- function(a) capital * (-media - sd_ret * qnorm(a))
+
+ggplot(data.frame(x = c(0.001, 0.25)), aes(x)) +
+  stat_function(fun = curva_var, n = 500, color = "steelblue3", linewidth = 0.9) +
+  theme_light() +
+  scale_y_continuous(labels = label_currency()) +
+  labs(x = expression(alpha), y = expression(VaR(alpha)),
+       title = "Cambio del VaR con respecto a alpha")
+```
+
+A menor $\alpha$ (más confianza exigida), mayor el VaR — tiene sentido: para
+estar más seguros de no superar la pérdida, hay que reportar un número más
+grande.
+
+------------------------------------------------------------------------
+
+# Parte 2 — ES paramétrico (fórmula cerrada)
+
+**Por qué (teoría)**: el VaR no es una medida de riesgo *coherente* — no
+cumple subaditividad ($\mathfrak{R}(P_1+\cdots+P_m) \le \mathfrak{R}(P_1) +
+\cdots + \mathfrak{R}(P_m)$), lo que en la práctica puede desincentivar la
+diversificación de un portafolio. El **Expected Shortfall (ES)**, también
+llamado *Conditional VaR*, sí es coherente. Para una distribución normal
+tiene una fórmula cerrada:
+
+$$\text{ES}(\alpha) = S \times \left\{-\mu + \sigma\left(\frac{\phi[\Phi^{-1}(\alpha)]}{\alpha}\right)\right\}$$
+
+```{r es-parametrico-teorico}
+ES_pct_teorico <- -media + sd_ret * (dnorm(qnorm(alpha)) / alpha)
+ES_teorico <- capital * ES_pct_teorico
+
+cat("ES(0.05):", label_percent(accuracy = 0.01)(ES_pct_teorico),
+    " = ", label_currency()(ES_teorico), "\n")
+```
+
+**Respuesta:** el ES al 95% es **`r label_currency()(ES_teorico)`** — más
+alto que el VaR (`r label_currency()(VaR_teorico)`), como debe ser: el ES
+promedia toda la cola más allá del VaR, no solo su borde.
+
+## VaR y ES juntos, en función de α
+
+```{r var-es-vs-alpha}
+curva_es <- function(a) capital * (-media + sd_ret * (dnorm(qnorm(a)) / a))
+
+datos_curvas <- data.frame(alpha = seq(0.001, 0.25, length.out = 300)) %>%
+  mutate(VaR = curva_var(alpha), ES = curva_es(alpha)) %>%
+  pivot_longer(cols = c(VaR, ES), names_to = "medida", values_to = "valor")
+
+ggplot(datos_curvas, aes(x = alpha, y = valor, color = medida)) +
+  geom_line(linewidth = 0.9) +
+  scale_color_manual(values = c(VaR = "steelblue3", ES = "black")) +
+  theme_light() +
+  scale_y_continuous(labels = label_currency()) +
+  labs(x = expression(alpha), y = "USD", color = NULL,
+       title = "Cambio en VaR y ES con respecto a alpha")
+```
+
+El ES (negro) siempre queda por encima del VaR (azul) para el mismo
+$\alpha$ — es, por construcción, un promedio de pérdidas al menos tan
+grandes como el VaR.
+
+------------------------------------------------------------------------
+
+# Parte 3 — Con datos reales del S&P500
+
+> "Calculemos el VaR a partir de la información histórica de los retornos
+> diarios del S&P500 [...], con una inversión de USD \$20,000 y un
+> $\alpha = 0.05$."
+
+**Qué hace**: descarga los precios de cierre ajustados del S&P500
+(`^GSPC`) en vivo desde Yahoo Finance, calcula los retornos logarítmicos
+diarios, y compara dos formas de estimar el VaR y el ES: **paramétrica**
+(asumiendo que los retornos son normales) y **histórica** (usando
+directamente la distribución empírica observada, sin asumir nada).
+
+```{r descarga-sp500}
+accion <- "^GSPC"
+
+precio_diario <- quantmod::getSymbols(accion, src = "yahoo",
+                                       from = "2021-12-31",
+                                       periodicity = "daily",
+                                       auto.assign = FALSE,
+                                       warnings = FALSE)
+
+precio_ajustado <- quantmod::Ad(precio_diario)
+
+# NOTA: TTR::ROC(type="continuous", na.pad=FALSE) tiene un bug de indexacion
+# ya documentado en este proyecto (ver CLAUDE.md) - se calcula el retorno
+# logaritmico directamente para evitarlo.
+retornos <- diff(log(precio_ajustado)) %>% na.omit() %>% `colnames<-`(accion)
+
+cat("Rango de datos:", format(zoo::index(retornos)[1]), "a",
+    format(zoo::index(retornos)[nrow(retornos)]), " (", nrow(retornos), "retornos )\n")
+```
+
+```{r var-es-sp500}
+capital_sp500 <- 20000
+alpha <- 0.05
+
+VaR_parametrico <- PerformanceAnalytics::VaR(R = retornos, p = alpha, invert = TRUE)
+VaR_parametrico_usd <- -capital_sp500 * VaR_parametrico
+
+VaR_historico <- quantile(x = retornos, probs = alpha)
+VaR_historico_usd <- -capital_sp500 * VaR_historico
+
+ES_parametrico <- PerformanceAnalytics::ES(R = retornos, p = alpha, invert = TRUE, method = "gaussian")
+ES_parametrico_usd <- -capital_sp500 * ES_parametrico
+
+ES_historico <- mean(retornos[retornos < VaR_historico])
+ES_historico_usd <- -capital_sp500 * ES_historico
+
+tabla_sp500 <- data.frame(
+  Método = c("Paramétrico (normal)", "Histórico (empírico)"),
+  `VaR (%)` = c(label_percent(accuracy = 0.001)(VaR_parametrico),
+                label_percent(accuracy = 0.001)(VaR_historico)),
+  `VaR ($)` = c(label_currency(accuracy = 0.01)(VaR_parametrico_usd),
+                label_currency(accuracy = 0.01)(VaR_historico_usd)),
+  `ES (%)` = c(label_percent(accuracy = 0.001)(ES_parametrico),
+               label_percent(accuracy = 0.001)(ES_historico)),
+  `ES ($)` = c(label_currency(accuracy = 0.01)(ES_parametrico_usd),
+               label_currency(accuracy = 0.01)(ES_historico_usd)),
+  check.names = FALSE
+)
+tabla_sp500
+```
+
+**Respuesta:** con `r nrow(retornos)` retornos diarios reales del S&P500 y
+una inversión de `r label_currency()(capital_sp500)`, el VaR paramétrico al
+95% es **`r label_currency(accuracy=0.01)(VaR_parametrico_usd)`**
+(`r label_percent(accuracy=0.001)(VaR_parametrico)`) y el histórico es
+**`r label_currency(accuracy=0.01)(VaR_historico_usd)`**
+(`r label_percent(accuracy=0.001)(VaR_historico)`) — muy cercanos entre sí,
+señal de que la normal es una aproximación razonable para este activo en
+este periodo. El ES paramétrico es
+**`r label_currency(accuracy=0.01)(ES_parametrico_usd)`** y el histórico
+**`r label_currency(accuracy=0.01)(ES_historico_usd)`** — el histórico sale
+más alto en ambos casos, porque los retornos diarios reales tienen colas
+más pesadas que una normal perfecta (fenómeno bien conocido en series
+financieras: *fat tails*).
+
+## Visualización de la cola
+
+```{r histograma-sp500}
+ggplot(retornos, aes(x = .data[[accion]])) +
+  geom_histogram(aes(y = after_stat(density)), color = "black", fill = "steelblue3",
+                 bins = nclass.Sturges(retornos)) +
+  stat_function(fun = dnorm, args = list(mean = mean(retornos), sd = sd(retornos)),
+                color = "black", linewidth = 0.8) +
+  geom_vline(xintercept = as.numeric(VaR_historico), color = "firebrick", linewidth = 0.8) +
+  geom_vline(xintercept = ES_historico, color = "firebrick", linewidth = 0.8, linetype = "dashed") +
+  theme_light() +
+  scale_x_continuous(labels = label_percent()) +
+  labs(x = "Retorno diario", y = "Densidad",
+       title = paste0("Retornos diarios del S&P500 vs. normal ajustada (", nrow(retornos), " observaciones)"),
+       subtitle = "Línea sólida = VaR histórico 95% · línea punteada = ES histórico 95%")
+```
+
+Nótese cómo la curva normal ajustada (línea negra) subestima la altura del
+pico central y la densidad de la cola izquierda extrema frente al
+histograma real — la razón exacta por la que el VaR/ES histórico sale más
+alto que el paramétrico en la tabla de arriba.
