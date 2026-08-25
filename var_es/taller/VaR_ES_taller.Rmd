@@ -1,22 +1,14 @@
 ---
-title: "VaR y ES — taller (trabajo en clase, con AAPL)"
+title: "Taller en clase — Simulaciones Montecarlo (VaR y ES)"
 output:
   html_document:
     df_print: paged
 ---
 
-Este es el mismo taller oficial de clase (`Taller Simulaciones Montecarlo.pdf`,
-titulado internamente *"Práctica en clase simulaciones de Montecarlo"*) —
-específicamente el ejercicio **"Crecimiento de una inversión"**, punto 2c:
-
-> "¿Cuánto es lo máximo que se puede perder en el 5% de los peores casos?"
-
-Esa pregunta *ya es* un cálculo de VaR al 95%, y ya está resuelta con datos
-reales de AAPL en el taller de Simulaciones
-(`simulaciones/taller/`, ejercicio 3). Este notebook reproduce exactamente
-la misma simulación (misma acción, mismo rango de fechas, mismas 100,000
-iteraciones, misma semilla) y la **extiende con el cálculo del ES** — que el
-enunciado original no pedía, pero que completa el par VaR y ES.
+Solución completa de `Taller-en-clase-MC.pdf` (agosto 2026, Andrés Salas) —
+dos ejercicios, ambos centrados en calcular **VaR** y **ES** sobre carteras
+simuladas. Cada pregunta del enunciado se cita textualmente antes de
+resolverla, y cada resultado cierra con una línea **Respuesta:** explícita.
 
 ## Configuración inicial
 
@@ -28,176 +20,292 @@ options(scipen = 999)
 
 ------------------------------------------------------------------------
 
-# Datos: AAPL, igual que en el taller de Simulaciones
+# Ejercicio 1 — Simulación inversión en Dow Inc.
 
-> "Considere una acción que se comercialice en las bolsas de valores de
-> EE.UU. Para esta acción debe descargar los precios de cierre ajustados
-> entre el 31/12/2021 y el 31/07/2026."
+> "Un amigo está buscando oportunidades de inversión en algún activo de
+> renta variable. No está dispuesto a invertir en empresas tecnológicas,
+> por lo que ha decidido centrar su atención en **Dow Inc.**, (DOW). [...]
+> Él tiene planeado invertir un total de USD \$10,000. [...] Usar los
+> retornos semanales de la acción de Dow Inc. desde el 2023-08-01 hasta el
+> 2026-08-13 [...] Cada una de las simulaciones debe de tener 10,000
+> iteraciones. Las simulaciones deben de iniciar con una semilla de valor
+> **8915**. El año tiene un total de 52 semanas."
 
-Se usa **Apple (AAPL)**, la misma acción y el mismo rango de fechas ya
-usados en `simulaciones/taller/`, para que los resultados sean directamente
-comparables.
+## Datos: retornos semanales de Dow Inc. (DOW)
 
-```{r accion-descarga}
-accion <- "AAPL"
-
-precio_diario <- quantmod::getSymbols(accion, src = "yahoo",
-                                       from = "2021-12-31",
-                                       to = "2026-07-31",
-                                       periodicity = "daily",
-                                       auto.assign = FALSE,
-                                       warnings = FALSE)
-
-precio_ajustado_diario <- quantmod::Ad(precio_diario)
-
-precio_mensual <- xts::to.monthly(precio_ajustado_diario,
-                                   indexAt = "lastof",
-                                   OHLC = FALSE)
-
-# NOTA: TTR::ROC(type="continuous", na.pad=FALSE) tiene un bug de indexacion
-# ya documentado en este proyecto (ver CLAUDE.md) - se calcula el retorno
-# logaritmico directamente para evitarlo.
-retornos_accion <- na.omit(diff(log(precio_mensual)))
-
-media_accion <- mean(retornos_accion)
-sd_accion <- sd(retornos_accion)
-max_accion <- max(retornos_accion)
-min_accion <- min(retornos_accion)
-
-data.frame(
-  accion = accion,
-  retorno_mensual_promedio_pct = media_accion * 100,
-  desv_estandar_pct = sd_accion * 100,
-  retorno_max_pct = max_accion * 100,
-  retorno_min_pct = min_accion * 100
-)
-```
-
-------------------------------------------------------------------------
-
-# Simulación: 100,000 iteraciones, 2 años, \$100,000 inicial
-
-> "2. [...] se debe de realizar n = 100,000 iteraciones en las dos
-> simulaciones (no realices el gráfico de la simulación)."
-
-Misma vectorización ya usada en el taller de Simulaciones (una matriz de
-retornos 100,000 × 24 con producto acumulado por fila, en vez de llamar
-`simulacion_activo()` 100,000 veces — ese enfoque, más fiel al código visto
-en clase, tardó ~29 minutos solo para la normal y no era viable acá).
-
-```{r accion-funciones}
-capital_inicial <- 100000
-periodos_2a <- 24
-n_100k <- 100000
-```
-
-## a. Distribución normal
-
-```{r sim-normal-100k}
-set.seed(302)
-retornos_normal_100k <- matrix(rnorm(n_100k * periodos_2a, mean = media_accion, sd = sd_accion),
-                                nrow = n_100k, ncol = periodos_2a)
-final_normal_100k <- capital_inicial * apply(1 + retornos_normal_100k, 1, prod)
-
-psych::describe(final_normal_100k)
-```
-
-## b. Distribución triangular
-
-```{r sim-tri-100k}
-set.seed(303)
-retornos_tri_100k <- matrix(EnvStats::rtri(n_100k * periodos_2a, min = min_accion, max = max_accion, mode = media_accion),
-                             nrow = n_100k, ncol = periodos_2a)
-final_tri_100k <- capital_inicial * apply(1 + retornos_tri_100k, 1, prod)
-
-psych::describe(final_tri_100k)
-```
-
-------------------------------------------------------------------------
-
-# VaR (la pregunta del taller) y ES (la extensión)
-
-> "c. ¿Cuánto es lo máximo que se puede perder en el 5% de los peores
-> casos?"
-
-**Por qué (teoría)**: esta pregunta, tal cual está escrita, pide el **VaR al
-95%** — el percentil 5% del capital final (equivalentemente, la pérdida en
-ese percentil). Pero el VaR no dice nada sobre *qué tan mala* es la pérdida
-dentro de ese 5% peor — para eso hace falta el **ES (Expected Shortfall)**:
-el promedio de las pérdidas, condicional a estar ya en ese peor 5%.
-
-```{r var-es-100k}
-alpha <- 0.05
-
-valor_riesgo <- function(capital_final, capital_inicial, probabilidad){
-  VaR_capital <- quantile(capital_final, probs = probabilidad)
-  ES_capital <- mean(capital_final[capital_final < VaR_capital])
-  VaR_perdida <- capital_inicial - VaR_capital
-  ES_perdida <- capital_inicial - ES_capital
-  return(list(VaR_capital = VaR_capital, ES_capital = ES_capital,
-              VaR_perdida = VaR_perdida, ES_perdida = ES_perdida))
+```{r dow-datos}
+descargar_retornos_semanales <- function(ticker) {
+  precio <- quantmod::getSymbols(ticker, src = "yahoo",
+                                  from = "2023-08-01", to = "2026-08-13",
+                                  periodicity = "weekly",
+                                  auto.assign = FALSE, warnings = FALSE)
+  ajustado <- quantmod::Ad(precio)
+  # diff(log(x)) en vez de TTR::ROC - bug de indexacion ya documentado en CLAUDE.md
+  na.omit(diff(log(ajustado)))
 }
 
-riesgo_normal <- valor_riesgo(final_normal_100k, capital_inicial, alpha)
-riesgo_tri <- valor_riesgo(final_tri_100k, capital_inicial, alpha)
+dow_retornos <- descargar_retornos_semanales("DOW")
 
-tabla_riesgo <- data.frame(
-  distribución = c("Normal", "Triangular"),
-  `VaR — pérdida máxima (5%)` = c(label_dollar()(riesgo_normal$VaR_perdida),
-                                    label_dollar()(riesgo_tri$VaR_perdida)),
-  `ES — pérdida promedio en el peor 5%` = c(label_dollar()(riesgo_normal$ES_perdida),
-                                              label_dollar()(riesgo_tri$ES_perdida)),
-  check.names = FALSE
+media_dow <- mean(dow_retornos)
+sd_dow <- sd(dow_retornos)
+min_dow <- min(dow_retornos)
+max_dow <- max(dow_retornos)
+
+data.frame(
+  accion = "DOW", n_semanas_historia = nrow(dow_retornos),
+  retorno_semanal_promedio_pct = media_dow * 100,
+  desv_estandar_pct = sd_dow * 100,
+  retorno_min_pct = min_dow * 100,
+  retorno_max_pct = max_dow * 100
 )
-tabla_riesgo
 ```
 
-**Respuesta (punto c del taller, VaR):** en el 5% de los peores casos, la
-pérdida máxima es de **`r label_dollar()(riesgo_normal$VaR_perdida)`**
-(`r label_percent(accuracy=0.1)(riesgo_normal$VaR_perdida/capital_inicial)`
-del capital inicial) si los retornos siguen una normal, y de
-**`r label_dollar()(riesgo_tri$VaR_perdida)`**
-(`r label_percent(accuracy=0.1)(riesgo_tri$VaR_perdida/capital_inicial)`) si
-siguen una triangular — mismos números que ya están publicados en el taller
-de Simulaciones, acá recalculados con la misma semilla para verificar.
+## Funciones de simulación y de riesgo
 
-**Extensión (ES):** promediando toda la cola más allá de ese 5%, la pérdida
-esperada sube a **`r label_dollar()(riesgo_normal$ES_perdida)`** para la
-normal y **`r label_dollar()(riesgo_tri$ES_perdida)`** para la triangular —
-en ambos casos más severa que el VaR, como debe ser. La brecha entre VaR y
-ES es más ancha en la normal
-(`r label_dollar()(riesgo_normal$ES_perdida - riesgo_normal$VaR_perdida)`)
-que en la triangular
-(`r label_dollar()(riesgo_tri$ES_perdida - riesgo_tri$VaR_perdida)`) — la
-misma razón de fondo que explica por qué el VaR de la normal ya salía más
-alto en el taller de Simulaciones: la triangular está **acotada** por el
-mínimo/máximo histórico observado, mientras que la normal tiene colas
-infinitas y puede generar pérdidas más extremas en el 100,000avo de casos
-más raro — justo donde vive el ES.
+**Qué hace**: `simular_capital()` genera una matriz de retornos semanales
+aleatorios (10,000 filas × 52 columnas, una por escenario) y capitaliza
+cada fila con producto acumulado — el mismo enfoque vectorizado ya usado en
+`simulaciones/taller/` para 100,000 iteraciones, mucho más rápido que
+llamar `simulacion_activo()` fila por fila. La distribución **triangular**
+usa el retorno medio observado como aproximación de la moda (misma
+convención ya usada en el taller de Simulaciones, indicada ahí
+explícitamente por el enunciado). `valor_riesgo()` calcula el VaR (percentil
+$\alpha$ del capital final) y el ES (promedio del capital final por debajo
+de ese percentil), ambos expresados como pérdida en dólares.
 
-## Visualización
+```{r funciones}
+simular_capital <- function(capital_inicial, tipo, n_sim, n_periodos, media,
+                             sd = NULL, minimo = NULL, maximo = NULL, moda = NULL, seed) {
+  set.seed(seed)
+  if (tipo == "normal") {
+    retornos <- matrix(rnorm(n_sim * n_periodos, mean = media, sd = sd), nrow = n_sim, ncol = n_periodos)
+  } else {
+    retornos <- matrix(EnvStats::rtri(n_sim * n_periodos, min = minimo, max = maximo, mode = moda),
+                        nrow = n_sim, ncol = n_periodos)
+  }
+  capital_inicial * apply(1 + retornos, 1, prod)
+}
 
-```{r histograma-var-es}
-datos_plot <- bind_rows(
-  data.frame(capital_final = final_normal_100k, distribucion = "Normal"),
-  data.frame(capital_final = final_tri_100k, distribucion = "Triangular")
+valor_riesgo <- function(capital_final, capital_inicial, alpha) {
+  VaR_capital <- quantile(capital_final, probs = alpha)
+  ES_capital <- mean(capital_final[capital_final < VaR_capital])
+  data.frame(
+    valor_esperado = mean(capital_final),
+    valor_maximo = max(capital_final),
+    ganancia_maxima = max(capital_final) - capital_inicial,
+    valor_minimo = min(capital_final),
+    perdida_maxima_obs = capital_inicial - min(capital_final),
+    VaR = capital_inicial - VaR_capital,
+    ES = capital_inicial - mean(capital_final[capital_final < VaR_capital])
+  )
+}
+```
+
+## Simulaciones (10,000 iteraciones, semilla 8915)
+
+```{r dow-simulaciones}
+capital_inicial <- 10000
+n_semanas <- 52
+n_sim <- 10000
+semilla <- 8915
+alpha <- 0.01  # 99% de confianza
+
+final_dow_normal <- simular_capital(capital_inicial, "normal", n_sim, n_semanas,
+                                     media = media_dow, sd = sd_dow, seed = semilla)
+final_dow_tri <- simular_capital(capital_inicial, "triangular", n_sim, n_semanas,
+                                  media = media_dow, minimo = min_dow, maximo = max_dow,
+                                  moda = media_dow, seed = semilla)
+
+tabla_dow <- bind_rows(
+  cbind(distribución = "Normal", valor_riesgo(final_dow_normal, capital_inicial, alpha)),
+  cbind(distribución = "Triangular", valor_riesgo(final_dow_tri, capital_inicial, alpha))
+) %>% mutate(across(where(is.numeric), ~ label_dollar(accuracy = 0.01)(.x)))
+
+tabla_dow
+```
+
+## Preguntas — Dow Inc.
+
+> "1. ¿Cuál es el valor esperado de la inversión al final del año?"
+
+**Respuesta:** con retornos normales, el valor esperado es
+**`r label_dollar()(mean(final_dow_normal))`**; con retornos triangulares,
+**`r label_dollar()(mean(final_dow_tri))`** — ambos por debajo del capital
+inicial de \$10,000, porque DOW tuvo un retorno semanal promedio
+**negativo** (`r label_percent(accuracy=0.01)(media_dow)`) en el periodo
+histórico usado.
+
+> "2. ¿Cuál es el valor máximo de la inversión al final del año? ¿Cuánto
+> representa en ganancias?"
+
+**Respuesta:** el máximo con la normal es
+**`r label_dollar()(max(final_dow_normal))`**
+(`r label_dollar()(max(final_dow_normal)-capital_inicial)` de ganancia); con
+la triangular, **`r label_dollar()(max(final_dow_tri))`**
+(`r label_dollar()(max(final_dow_tri)-capital_inicial)` de ganancia).
+
+> "3. ¿Cuál es el valor mínimo de la inversión al final del año? ¿Cuánto
+> representa en pérdidas?"
+
+**Respuesta:** el mínimo con la normal es
+**`r label_dollar()(min(final_dow_normal))`**
+(`r label_dollar()(capital_inicial-min(final_dow_normal))` de pérdida); con
+la triangular, **`r label_dollar()(min(final_dow_tri))`**
+(`r label_dollar()(capital_inicial-min(final_dow_tri))` de pérdida) — casi
+la totalidad del capital, el peor de los 10,000 escenarios simulados.
+
+> "4. ¿Cuál es la máxima pérdida posible con una confianza del 99 %?"
+
+**Respuesta:** este es el **VaR al 99%**. Con la normal, la pérdida máxima
+al 99% de confianza es **`r label_dollar()(capital_inicial-quantile(final_dow_normal,alpha))`**;
+con la triangular, **`r label_dollar()(capital_inicial-quantile(final_dow_tri,alpha))`**.
+
+> "5. ¿Cuánto es el valor esperado a perder de la inversión en el 1 % de
+> los casos?"
+
+**Respuesta:** este es el **ES al 99%** (promedio de las pérdidas dentro
+del peor 1% de escenarios, no solo el borde). Con la normal,
+**`r label_dollar()(capital_inicial-mean(final_dow_normal[final_dow_normal<quantile(final_dow_normal,alpha)]))`**;
+con la triangular,
+**`r label_dollar()(capital_inicial-mean(final_dow_tri[final_dow_tri<quantile(final_dow_tri,alpha)]))`**
+— en ambos casos más severo que el VaR de la pregunta anterior, como debe
+ser.
+
+> "6. ¿Cuál distribución genera mejores resultados, considerando una
+> política de aversión al riesgo?"
+
+**Respuesta:** la **normal domina en las dos dimensiones que le importan a
+alguien averso al riesgo**: valor esperado más alto
+(`r label_dollar()(mean(final_dow_normal))` vs.
+`r label_dollar()(mean(final_dow_tri))`) *y* VaR/ES más bajos (menos
+pérdida potencial). No hay disyuntiva entre retorno y riesgo acá — la
+normal es simplemente mejor en ambos frentes para DOW en este periodo, así
+que bajo cualquier política de aversión al riesgo se prefiere.
+
+## Repetición con Eli Lilly and Company (LLY) — pregunta 7
+
+> "7. Repite el ejercicio usando la acción de **Eli Lilly and Company**,
+> (LLY)."
+
+```{r lly-datos-sim}
+lly_retornos <- descargar_retornos_semanales("LLY")
+
+media_lly <- mean(lly_retornos)
+sd_lly <- sd(lly_retornos)
+min_lly <- min(lly_retornos)
+max_lly <- max(lly_retornos)
+
+final_lly_normal <- simular_capital(capital_inicial, "normal", n_sim, n_semanas,
+                                     media = media_lly, sd = sd_lly, seed = semilla)
+final_lly_tri <- simular_capital(capital_inicial, "triangular", n_sim, n_semanas,
+                                  media = media_lly, minimo = min_lly, maximo = max_lly,
+                                  moda = media_lly, seed = semilla)
+
+tabla_lly <- bind_rows(
+  cbind(distribución = "Normal", valor_riesgo(final_lly_normal, capital_inicial, alpha)),
+  cbind(distribución = "Triangular", valor_riesgo(final_lly_tri, capital_inicial, alpha))
+) %>% mutate(across(where(is.numeric), ~ label_dollar(accuracy = 0.01)(.x)))
+
+tabla_lly
+```
+
+**Respuesta:** a diferencia de DOW, LLY tuvo un retorno semanal promedio
+**positivo**
+(`r label_percent(accuracy=0.01)(media_lly)`), así que el valor esperado
+final queda **por encima** del capital inicial en ambas distribuciones
+(`r label_dollar()(mean(final_lly_normal))` normal,
+`r label_dollar()(mean(final_lly_tri))` triangular). Igual que con DOW, la
+**normal vuelve a dominar** a la triangular en valor esperado y en
+VaR/ES — mismo patrón, dos acciones distintas: acá, la triangular
+(acotada por el peor/mejor retorno histórico observado) termina con más
+riesgo de cola que la normal, no menos, porque su forma comprime la masa
+de probabilidad lejos de la moda hacia los extremos del rango observado al
+compuesto en 52 semanas.
+
+------------------------------------------------------------------------
+
+# Ejercicio 2 — Elección de la mejor inversión
+
+> "¡Te has ganado una rifa de COP \$10,000,000! [...] Has decidido invertir
+> tus ganancias ocasionales en algún activo de renta variable a un periodo
+> de un año. Tienes 3 opciones [...] Utilizando simulaciones con 100,000
+> iteraciones calcula para cada posible inversión: 1. El valor esperado de
+> la inversión al final del año. 2. El valor en riesgo con una confianza
+> del 99 %. 3. La pérdida esperada en el 1 % de los casos."
+
+> "a. Un activo cuyos retornos son anuales y siguen una distribución normal
+> con un retorno medio de 8 % y una desviación estándar de 15 %."
+>
+> "b. Un activo con retornos mensuales que siguen una distribución
+> triangular con un mínimo de -13.84 %, un máximo de 21.49 % y un retorno
+> medio de 4.76 %."
+>
+> "c. Un activo con retornos diarios que siguen una distribución normal con
+> un retorno medio de 0.102 % y una desviación estándar de 1.79 %."
+
+**Nota de implementación**: para el activo (c), "un año" se toma como 252
+días hábiles (convención estándar en finanzas para retornos diarios). Para
+el (b), se compone mensualmente 12 veces; para el (a), un solo periodo
+anual.
+
+```{r parte2-simulacion}
+capital_p2 <- 10000000  # COP
+n_sim_p2 <- 100000
+
+final_a <- simular_capital(capital_p2, "normal", n_sim_p2, 1,
+                            media = 0.08, sd = 0.15, seed = semilla)
+final_b <- simular_capital(capital_p2, "triangular", n_sim_p2, 12,
+                            media = 0.0476, minimo = -0.1384, maximo = 0.2149,
+                            moda = 0.0476, seed = semilla)
+final_c <- simular_capital(capital_p2, "normal", n_sim_p2, 252,
+                            media = 0.00102, sd = 0.0179, seed = semilla)
+
+fmt_cop <- label_dollar(prefix = "COP $", big.mark = ".", decimal.mark = ",", accuracy = 1)
+
+tabla_p2 <- bind_rows(
+  cbind(activo = "a) Normal, anual", valor_riesgo(final_a, capital_p2, alpha)),
+  cbind(activo = "b) Triangular, mensual x12", valor_riesgo(final_b, capital_p2, alpha)),
+  cbind(activo = "c) Normal, diaria x252", valor_riesgo(final_c, capital_p2, alpha))
+) %>%
+  select(activo, valor_esperado, VaR, ES) %>%
+  mutate(across(where(is.numeric), fmt_cop))
+
+tabla_p2
+```
+
+**Respuesta:**
+
+1. **Valor esperado**: (a) `r fmt_cop(mean(final_a))`, (b)
+   `r fmt_cop(mean(final_b))`, (c) `r fmt_cop(mean(final_c))`.
+2. **VaR al 99%**: (a) `r fmt_cop(capital_p2-quantile(final_a,alpha))`, (b)
+   `r fmt_cop(capital_p2-quantile(final_b,alpha))`, (c)
+   `r fmt_cop(capital_p2-quantile(final_c,alpha))`.
+3. **ES en el 1% de los casos**: (a)
+   `r fmt_cop(capital_p2-mean(final_a[final_a<quantile(final_a,alpha)]))`,
+   (b) `r fmt_cop(capital_p2-mean(final_b[final_b<quantile(final_b,alpha)]))`,
+   (c) `r fmt_cop(capital_p2-mean(final_c[final_c<quantile(final_c,alpha)]))`.
+
+## Recomendación
+
+La opción **b) (triangular, retornos mensuales)** domina a las otras dos en
+las tres métricas a la vez: **mayor valor esperado** y **menor VaR y ES**
+(menos pérdida potencial en el peor 1% de escenarios). No hay que sacrificar
+retorno por seguridad ni viceversa — b) es simplemente mejor en ambos
+frentes, así que es la elección clara para invertir el premio de la rifa,
+sin importar qué tan averso al riesgo sea el inversionista.
+
+```{r histograma-p2}
+datos_p2 <- bind_rows(
+  data.frame(capital_final = final_a, activo = "a) Normal anual"),
+  data.frame(capital_final = final_b, activo = "b) Triangular mensual"),
+  data.frame(capital_final = final_c, activo = "c) Normal diaria")
 )
 
-lineas_ref <- data.frame(
-  distribucion = c("Normal", "Normal", "Triangular", "Triangular"),
-  tipo = c("VaR", "ES", "VaR", "ES"),
-  valor = c(riesgo_normal$VaR_capital, riesgo_normal$ES_capital,
-            riesgo_tri$VaR_capital, riesgo_tri$ES_capital)
-)
-
-ggplot(datos_plot, aes(x = capital_final)) +
+ggplot(datos_p2, aes(x = capital_final)) +
   geom_histogram(color = "black", fill = "steelblue3", bins = 60) +
-  geom_vline(data = lineas_ref, aes(xintercept = valor, linetype = tipo), color = "firebrick", linewidth = 0.8) +
-  facet_wrap(~distribucion, scales = "free_x") +
+  facet_wrap(~activo, scales = "free_x") +
   theme_light() +
-  scale_x_continuous(labels = label_dollar(scale = 1/1000, suffix = "k")) +
-  scale_linetype_manual(values = c(VaR = "solid", ES = "dashed")) +
-  labs(x = "Capital final (2 años)", y = "Frecuencia", linetype = NULL,
-       title = "Distribución del capital final — 100,000 simulaciones",
-       subtitle = "Línea sólida = VaR 95% · línea punteada = ES 95%")
+  scale_x_continuous(labels = label_dollar(scale = 1e-6, suffix = "M", prefix = "COP $")) +
+  labs(x = "Capital final (1 año)", y = "Frecuencia",
+       title = "Distribución del capital final — 100,000 simulaciones por activo")
 ```
