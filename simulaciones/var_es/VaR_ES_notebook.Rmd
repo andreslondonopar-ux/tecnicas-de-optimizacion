@@ -1,0 +1,230 @@
+---
+title: "VaR y ES — repaso con teoría"
+output:
+  html_document:
+    df_print: paged
+---
+
+Este notebook intercala el código real de `VaR y ES.R` con la explicación
+conceptual de qué mide el VaR, qué mide el ES y por qué se calculan sobre la
+cola de la distribución simulada. Reusa la misma función `simulacion_activo()`
+de `Simulaciones.R` — aquí el objetivo ya no es solo ver cómo crece una
+inversión, sino cuantificar cuánto se puede perder en el peor de los casos.
+
+## Configuración inicial
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, EnvStats, ggpubr, psych, readr, PerformanceAnalytics, scales)
+options(scipen = 999)
+```
+
+------------------------------------------------------------------------
+
+# Parte 1 — Simulación a 1 periodo
+
+**Qué hace**: parte de un capital inicial y le aplica un único retorno
+aleatorio, extraído de una distribución normal con una media y una
+desviación estándar dadas. Repetido 100,000 veces, esto genera una
+distribución empírica completa de "cómo podría terminar" la inversión al
+cabo de un periodo.
+
+**Por qué (teoría)**: antes de poder hablar de riesgo hace falta tener la
+distribución completa de resultados posibles, no solo el promedio. El **VaR
+(Value at Risk)** al 95% es el percentil 5% de esa distribución: el nivel de
+pérdida que, con 95% de confianza, no se va a superar. El **ES (Expected
+Shortfall)**, también llamado *Conditional VaR*, va un paso más allá — es el
+promedio de las pérdidas *dado que* ya se cayó en ese peor 5%. Dos carteras
+pueden tener el mismo VaR y un ES muy distinto si una de ellas tiene una cola
+mucho más larga; por eso Basilea III (FRTB, 2016) exige reportar ES junto al
+VaR — a diferencia del VaR, el ES es una medida de riesgo *coherente*
+(subaditiva: el riesgo de un portafolio combinado nunca es mayor que la suma
+de sus partes por separado).
+
+```{r funcion-simulacion}
+simulacion_activo <- function(valor_inicial, media_rendimiento, sd_rendimiento, periodos){
+  activo <- data.frame(periodo = 0:periodos) %>%
+    mutate(retorno = c(0, rnorm(n = periodos, mean = media_rendimiento, sd = sd_rendimiento))) %>%
+    mutate(rendimiento = 1 + retorno) %>%
+    mutate(rend_acum = cumprod(rendimiento)) %>%
+    mutate(retorno_acum = rend_acum - 1) %>%
+    mutate(capital = valor_inicial * rend_acum, .after = 1)
+  return(activo)
+}
+```
+
+```{r simulacion-1-periodo}
+set.seed(20260825)
+
+valor_inicial <- 100000
+retorno <- 0.04
+volatilidad <- 0.10
+tiempo <- 1
+numero_simulaciones <- 100000
+
+monte_carlo_sim <-
+  purrr::map(.x = rep(valor_inicial, numero_simulaciones), .f = simulacion_activo,
+             periodos = tiempo,
+             media_rendimiento = retorno,
+             sd_rendimiento = volatilidad) %>%
+  list_rbind(names_to = "simulacion")
+
+sim_final <- monte_carlo_sim %>%
+  group_by(simulacion) %>%
+  summarise(capital = last(capital),
+            retornos = last(retorno),
+            retorno_acum = last(retorno_acum))
+
+psych::describe(sim_final$retorno_acum)
+```
+
+## Cálculo del VaR y el ES
+
+**Qué hace**: `quantile(retornos, probs = alpha)` calcula directamente el
+percentil 5% de los 100,000 retornos finales simulados — ese es el VaR. El
+ES se calcula filtrando solo los retornos que quedaron por debajo de ese
+umbral (`retornos[retornos < VaR]`) y promediándolos.
+
+```{r valor-riesgo-funcion}
+valor_riesgo <- function(retornos, capital, probabilidad){
+  VaR <- quantile(retornos, probs = probabilidad)
+  ES <- mean(retornos[retornos < VaR])
+  VaR_Cap <- -capital * VaR
+  ES_Cap <- -capital * ES
+  return(list("VaR" = VaR, "ES" = ES, "VaR_Capital" = VaR_Cap, "ES_Capital" = ES_Cap))
+}
+
+alpha <- 0.05
+VaR_sim_1 <- valor_riesgo(retornos = sim_final$retorno_acum, capital = valor_inicial, probabilidad = alpha)
+
+cat("VaR 95%:", label_percent(accuracy = 0.01)(VaR_sim_1$VaR),
+    "  (", label_dollar()(VaR_sim_1$VaR_Capital), "sobre", label_dollar()(valor_inicial), ")\n")
+cat("ES  95%:", label_percent(accuracy = 0.01)(VaR_sim_1$ES),
+    "  (", label_dollar()(VaR_sim_1$ES_Capital), "sobre", label_dollar()(valor_inicial), ")\n")
+```
+
+## Visualización — 1 periodo
+
+```{r histograma-1-periodo}
+ggplot(sim_final, aes(x = retorno_acum)) +
+  geom_histogram(color = "black", fill = "steelblue3", bins = nclass.Sturges(sim_final$retorno_acum)) +
+  geom_vline(xintercept = VaR_sim_1$VaR, color = "firebrick", linewidth = 0.8) +
+  geom_vline(xintercept = VaR_sim_1$ES, color = "firebrick", linewidth = 0.8, linetype = "dashed") +
+  theme_light() +
+  scale_x_continuous(labels = label_percent()) +
+  labs(x = "Retorno acumulado", y = "Frecuencia",
+       title = "Distribución del retorno a 1 periodo (100,000 simulaciones)",
+       subtitle = "Línea sólida = VaR 95% · línea punteada = ES 95%")
+```
+
+**Respuesta:** con retorno esperado de `r label_percent()(retorno)` y
+volatilidad de `r label_percent()(volatilidad)` por periodo, el VaR 95% a 1
+periodo es **`r label_percent(accuracy = 0.01)(VaR_sim_1$VaR)`**
+(`r label_dollar(accuracy = 0.01)(VaR_sim_1$VaR_Capital)` de pérdida sobre
+`r label_dollar()(valor_inicial)`) y el ES 95% es
+**`r label_percent(accuracy = 0.01)(VaR_sim_1$ES)`**
+(`r label_dollar(accuracy = 0.01)(VaR_sim_1$ES_Capital)`).
+
+------------------------------------------------------------------------
+
+# Parte 2 — Simulación a 12 periodos
+
+**Qué hace**: la misma función `simulacion_activo()`, pero encadenando 12
+retornos consecutivos por trayectoria (capitalización compuesta vía
+`cumprod()`) en vez de uno solo.
+
+**Por qué (teoría)**: al pasar de 1 a 12 periodos ocurren dos cosas a la
+vez. El retorno esperado se acumula linealmente (12 × 4% ≈ 48%), lo que
+desplaza toda la distribución hacia la derecha. Pero además, al ser un
+producto de 12 términos aleatorios en vez de uno solo, la distribución deja
+de ser simétrica: se estira mucho más hacia la derecha (las ganancias
+grandes se multiplican entre sí) mientras la cola izquierda queda acotada
+por la pérdida total del capital (el retorno acumulado no puede bajar de
+-100%). Esa asimetría es precisamente lo que el VaR, al ser un solo punto de
+corte, no logra capturar del todo — y es donde el ES se vuelve más
+informativo.
+
+```{r simulacion-12-periodos}
+set.seed(20260825)
+
+tiempo_12 <- 12
+
+monte_carlo_sim_12 <-
+  purrr::map(.x = rep(valor_inicial, numero_simulaciones), .f = simulacion_activo,
+             periodos = tiempo_12,
+             media_rendimiento = retorno,
+             sd_rendimiento = volatilidad) %>%
+  list_rbind(names_to = "simulacion")
+
+sim_final_12 <- monte_carlo_sim_12 %>%
+  group_by(simulacion) %>%
+  summarise(capital = last(capital),
+            retornos = last(retorno),
+            retorno_acum = last(retorno_acum))
+
+VaR_sim_12 <- valor_riesgo(retornos = sim_final_12$retorno_acum, probabilidad = alpha, capital = valor_inicial)
+
+cat("VaR 95%:", label_percent(accuracy = 0.01)(VaR_sim_12$VaR),
+    "  (", label_dollar()(VaR_sim_12$VaR_Capital), "sobre", label_dollar()(valor_inicial), ")\n")
+cat("ES  95%:", label_percent(accuracy = 0.01)(VaR_sim_12$ES),
+    "  (", label_dollar()(VaR_sim_12$ES_Capital), "sobre", label_dollar()(valor_inicial), ")\n")
+```
+
+## Visualización — 12 periodos
+
+```{r histograma-12-periodos}
+ggplot(sim_final_12, aes(x = retorno_acum)) +
+  geom_histogram(color = "black", fill = "steelblue3", bins = nclass.Sturges(sim_final_12$retorno_acum)) +
+  geom_vline(xintercept = VaR_sim_12$VaR, color = "firebrick", linewidth = 0.8) +
+  geom_vline(xintercept = VaR_sim_12$ES, color = "firebrick", linewidth = 0.8, linetype = "dashed") +
+  theme_light() +
+  scale_x_continuous(labels = label_percent()) +
+  labs(x = "Retorno acumulado", y = "Frecuencia",
+       title = "Distribución del retorno a 12 periodos (100,000 simulaciones)",
+       subtitle = "Línea sólida = VaR 95% · línea punteada = ES 95% — nótese la asimetría a la derecha")
+```
+
+**Respuesta:** a 12 periodos, el VaR 95% es
+**`r label_percent(accuracy = 0.01)(VaR_sim_12$VaR)`**
+(`r label_dollar(accuracy = 0.01)(VaR_sim_12$VaR_Capital)`) y el ES 95% es
+**`r label_percent(accuracy = 0.01)(VaR_sim_12$ES)`**
+(`r label_dollar(accuracy = 0.01)(VaR_sim_12$ES_Capital)`).
+
+------------------------------------------------------------------------
+
+# Comparación 1 vs. 12 periodos
+
+```{r tabla-comparacion}
+tabla_comparacion <- data.frame(
+  Métrica = c("VaR 95% (%)", "VaR 95% ($)", "ES 95% (%)", "ES 95% ($)", "Razón ES / VaR"),
+  `1 periodo` = c(
+    label_percent(accuracy = 0.01)(VaR_sim_1$VaR),
+    label_dollar(accuracy = 0.01)(VaR_sim_1$VaR_Capital),
+    label_percent(accuracy = 0.01)(VaR_sim_1$ES),
+    label_dollar(accuracy = 0.01)(VaR_sim_1$ES_Capital),
+    label_number(accuracy = 0.01, suffix = "x")(VaR_sim_1$ES / VaR_sim_1$VaR)
+  ),
+  `12 periodos` = c(
+    label_percent(accuracy = 0.01)(VaR_sim_12$VaR),
+    label_dollar(accuracy = 0.01)(VaR_sim_12$VaR_Capital),
+    label_percent(accuracy = 0.01)(VaR_sim_12$ES),
+    label_dollar(accuracy = 0.01)(VaR_sim_12$ES_Capital),
+    label_number(accuracy = 0.01, suffix = "x")(VaR_sim_12$ES / VaR_sim_12$VaR)
+  ),
+  check.names = FALSE
+)
+tabla_comparacion
+```
+
+El VaR apenas se mueve entre horizontes: la deriva positiva acumulada
+compensa buena parte del aumento de volatilidad justo en el percentil 5%. El
+ES cuenta otra historia — crece proporcionalmente mucho más, y la razón
+ES/VaR sube de forma clara. Condicional a estar ya en el peor 5% de
+escenarios, la pérdida promedio se vuelve más severa a 12 periodos que a 1:
+la capitalización compuesta de retornos normales i.i.d. genera una cola
+izquierda más pesada de lo que el VaR por sí solo deja ver.
+
+Para poder reproducir exactamente estas cifras se fijó una semilla
+(`set.seed(20260825)`) en ambas simulaciones — el script original
+`VaR y ES.R` no la fija, así que cada corrida sin semilla da números
+ligeramente distintos, del mismo orden de magnitud.
