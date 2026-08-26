@@ -5,10 +5,6 @@ output:
     df_print: paged
 ---
 
-Solución completa del `Taller Simulaciones Montecarlo.pdf` (agosto 2026). Cada
-pregunta del enunciado se cita textualmente antes de resolverla, y cada resultado
-cierra con una línea **Respuesta:** explícita.
-
 ```{r setup}
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, EnvStats, ggpubr, psych, readr, scales, quantmod, xts, TTR)

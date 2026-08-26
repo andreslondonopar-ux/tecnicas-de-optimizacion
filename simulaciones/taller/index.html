@@ -1626,10 +1626,6 @@ Solución</h1>
 </div>
 
 
-<p>Solución completa del <code>Taller Simulaciones Montecarlo.pdf</code>
-(agosto 2026). Cada pregunta del enunciado se cita textualmente antes de
-resolverla, y cada resultado cierra con una línea
-<strong>Respuesta:</strong> explícita.</p>
 <pre class="r"><code>if (!require(&quot;pacman&quot;)) install.packages(&quot;pacman&quot;)</code></pre>
 <pre><code>## Cargando paquete requerido: pacman</code></pre>
 <pre><code>## Warning: package &#39;pacman&#39; was built under R version 4.5.2</code></pre>
@@ -2011,7 +2007,7 @@ data.frame(
 )</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["accion"],"name":[1],"type":["chr"],"align":["left"]},{"label":["retorno_mensual_promedio_pct"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["desv_estandar_pct"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["retorno_max_pct"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["retorno_min_pct"],"name":[5],"type":["dbl"],"align":["right"]}],"data":[{"1":"AAPL","2":"1.186699","3":"7.329311","4":"17.28045","5":"-13.04187"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":["accion"],"name":[1],"type":["chr"],"align":["left"]},{"label":["retorno_mensual_promedio_pct"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["desv_estandar_pct"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["retorno_max_pct"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["retorno_min_pct"],"name":[5],"type":["dbl"],"align":["right"]}],"data":[{"1":"AAPL","2":"1.1867","3":"7.329316","4":"17.28047","5":"-13.04193"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 <p><strong>Respuesta:</strong> para AAPL entre 2021-12-31 y 2026-07-31,
@@ -2080,12 +2076,12 @@ media_normal_51 &lt;- mean(final_normal_51)
 sd_normal_51 &lt;- sd(final_normal_51)
 mediana_normal_51 &lt;- median(final_normal_51)
 print(psych::describe(final_normal_51))</code></pre>
-<pre><code>##    vars  n     mean       sd   median  trimmed     mad      min      max
-## X1    1 51 143253.5 53346.47 132190.7 138756.7 49166.8 43325.39 285152.6
-##       range      skew   kurtosis   se
-## X1 241827.2 0.6762746 0.02248271 7470</code></pre>
+<pre><code>##    vars  n     mean       sd   median  trimmed      mad      min      max
+## X1    1 51 143253.6 53346.51 132190.7 138756.8 49166.83 43325.35 285152.8
+##       range      skew   kurtosis       se
+## X1 241827.4 0.6762751 0.02248335 7470.006</code></pre>
 <p><strong>Respuesta (normal, n=51):</strong> capital final promedio =
-$143,254, desviación estándar = $53,346, mediana = $132,191.</p>
+$143,254, desviación estándar = $53,347, mediana = $132,191.</p>
 </div>
 <div id="b.-distribución-triangular" class="section level3">
 <h3>b. Distribución triangular</h3>
@@ -2111,19 +2107,19 @@ media_tri_51 &lt;- mean(final_tri_51)
 sd_tri_51 &lt;- sd(final_tri_51)
 mediana_tri_51 &lt;- median(final_tri_51)
 print(psych::describe(final_tri_51))</code></pre>
-<pre><code>##    vars  n     mean       sd   median  trimmed      mad      min      max
-## X1    1 51 165168.8 58287.84 152484.5 158370.2 49635.51 77572.86 327805.3
-##       range      skew  kurtosis       se
-## X1 250232.4 0.9823409 0.5085349 8161.931</code></pre>
+<pre><code>##    vars  n     mean       sd median  trimmed      mad     min      max    range
+## X1    1 51 165168.4 58287.83 152484 158369.7 49635.36 77572.5 327804.9 250232.4
+##         skew  kurtosis       se
+## X1 0.9823421 0.5085377 8161.929</code></pre>
 <p><strong>Respuesta (triangular, n=51):</strong> capital final promedio
-= $165,169, desviación estándar = $58,288, mediana = $152,484.</p>
+= $165,168, desviación estándar = $58,288, mediana = $152,484.</p>
 </div>
 <div id="comparación-normal-vs.-triangular-n-51" class="section level3">
 <h3>Comparación normal vs. triangular (n = 51)</h3>
 <p><strong>Respuesta:</strong> con n=51, la simulación
 <strong>triangular da un capital final promedio más alto</strong>
-($165,169 vs. $143,254 de la normal, una diferencia de 15.3%) y
-<strong>algo más de dispersión</strong> ($58,288 vs. $53,346). Con solo
+($165,168 vs. $143,254 de la normal, una diferencia de 15.3%) y
+<strong>algo más de dispersión</strong> ($58,288 vs. $53,347). Con solo
 51 simulaciones esta comparación todavía tiene bastante ruido de
 muestreo — se retoma con más precisión en la Parte 2 (n=100,000).</p>
 </div>
@@ -2170,18 +2166,18 @@ mediana_tri_100k &lt;- median(final_tri_100k)
 cat(&quot;--- Normal (n=100,000) ---\n&quot;)</code></pre>
 <pre><code>## --- Normal (n=100,000) ---</code></pre>
 <pre class="r"><code>print(psych::describe(final_normal_100k))</code></pre>
-<pre><code>##    vars      n     mean       sd   median  trimmed      mad     min      max
-## X1    1 100000 132799.2 48546.39 124737.5 128293.4 43806.91 24920.9 583697.7
+<pre><code>##    vars      n     mean       sd   median  trimmed      mad      min      max
+## X1    1 100000 132799.2 48546.42 124737.5 128293.4 43806.94 24920.87 583698.2
 ##       range     skew kurtosis       se
-## X1 558776.8 1.091992 2.129382 153.5172</code></pre>
+## X1 558777.4 1.091993 2.129385 153.5173</code></pre>
 <pre class="r"><code>cat(&quot;\n--- Triangular (n=100,000) ---\n&quot;)</code></pre>
 <pre><code>## 
 ## --- Triangular (n=100,000) ---</code></pre>
 <pre class="r"><code>print(psych::describe(final_tri_100k))</code></pre>
-<pre><code>##    vars      n   mean       sd   median  trimmed      mad      min      max
-## X1    1 100000 153672 46984.39 147119.9 149914.6 43685.27 37227.51 502139.5
+<pre><code>##    vars      n     mean       sd   median  trimmed      mad      min      max
+## X1    1 100000 153671.6 46984.37 147119.4 149914.1 43685.25 37227.25 502139.3
 ##     range      skew kurtosis       se
-## X1 464912 0.9122776 1.462925 148.5777</code></pre>
+## X1 464912 0.9122796 1.462932 148.5776</code></pre>
 <blockquote>
 <p>“a. Calcular las estadísticas descriptivas y comparar los resultados
 con los obtenidos en las simulaciones anteriores.”</p>
@@ -2196,14 +2192,14 @@ con los obtenidos en las simulaciones anteriores.”</p>
 tabla_n</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["distribucion"],"name":[1],"type":["chr"],"align":["left"]},{"label":["n"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["media"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["desv_estandar"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["mediana"],"name":[5],"type":["dbl"],"align":["right"]}],"data":[{"1":"Normal","2":"51","3":"143253.5","4":"53346.47","5":"132190.7"},{"1":"Normal","2":"100000","3":"132799.2","4":"48546.39","5":"124737.5"},{"1":"Triangular","2":"51","3":"165168.8","4":"58287.84","5":"152484.5"},{"1":"Triangular","2":"100000","3":"153672.0","4":"46984.39","5":"147119.9"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":["distribucion"],"name":[1],"type":["chr"],"align":["left"]},{"label":["n"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["media"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["desv_estandar"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["mediana"],"name":[5],"type":["dbl"],"align":["right"]}],"data":[{"1":"Normal","2":"51","3":"143253.6","4":"53346.51","5":"132190.7"},{"1":"Normal","2":"100000","3":"132799.2","4":"48546.42","5":"124737.5"},{"1":"Triangular","2":"51","3":"165168.4","4":"58287.83","5":"152484.0"},{"1":"Triangular","2":"100000","3":"153671.6","4":"46984.37","5":"147119.4"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 <p><strong>Respuesta:</strong> al subir de n=51 a n=100,000 para la
 <strong>normal</strong>, la media pasa de $143,254 a $132,799
 (diferencia de 7.3%) — un cambio pequeño, dentro de lo esperable por
 ruido de muestreo con solo 51 simulaciones. Para la
-<strong>triangular</strong>, la media pasa de $165,169 a $153,672
+<strong>triangular</strong>, la media pasa de $165,168 a $153,672
 (diferencia de 7%). En ambos casos <strong>la media ya estaba
 razonablemente bien estimada con n=51</strong> — confirma, otra vez, que
 pocas iteraciones alcanzan para la tendencia central.</p>
@@ -2247,7 +2243,7 @@ data.frame(
 )</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["distribucion"],"name":[1],"type":["chr"],"align":["left"]},{"label":["capital_inicial"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["percentil_5_capital_final"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["perdida_maxima_5pct"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["perdida_maxima_5pct_pct"],"name":[5],"type":["dbl"],"align":["right"]}],"data":[{"1":"Normal","2":"100000","3":"69134.96","4":"30865.04","5":"30.86504"},{"1":"Triangular","2":"100000","3":"89561.17","4":"10438.83","5":"10.43883"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":["distribucion"],"name":[1],"type":["chr"],"align":["left"]},{"label":["capital_inicial"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["percentil_5_capital_final"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["perdida_maxima_5pct"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["perdida_maxima_5pct_pct"],"name":[5],"type":["dbl"],"align":["right"]}],"data":[{"1":"Normal","2":"100000","3":"69134.93","4":"30865.07","5":"30.86507"},{"1":"Triangular","2":"100000","3":"89560.78","4":"10439.22","5":"10.43922"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 <p><strong>Respuesta:</strong> en el 5% de los peores casos, la pérdida

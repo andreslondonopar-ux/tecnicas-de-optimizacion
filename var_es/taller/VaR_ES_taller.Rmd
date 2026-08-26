@@ -5,11 +5,6 @@ output:
     df_print: paged
 ---
 
-Solución completa de `Taller-en-clase-MC.pdf` (agosto 2026, Andrés Salas) —
-dos ejercicios, ambos centrados en calcular **VaR** y **ES** sobre carteras
-simuladas. Cada pregunta del enunciado se cita textualmente antes de
-resolverla, y cada resultado cierra con una línea **Respuesta:** explícita.
-
 ## Configuración inicial
 
 ```{r setup}
