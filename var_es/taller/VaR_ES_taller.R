@@ -141,18 +141,28 @@ cat("Respuesta 3: el minimo con la normal es", label_dollar()(min(final_dow_norm
     "de perdida) - casi la totalidad del capital, el peor de los 10,000 escenarios.\n")
 
 # PREGUNTA 4: "Cual es la maxima perdida posible con una confianza del 99%?"
-# -> Esto es el VaR al 99%.
-cat("Respuesta 4 (VaR al 99%): con la normal, la perdida maxima al 99% de confianza es",
-    label_dollar()(capital_inicial - quantile(final_dow_normal, alpha)),
-    "; con la triangular,", label_dollar()(capital_inicial - quantile(final_dow_tri, alpha)), "\n")
+# -> Esto es el VaR al 99%. Interpretacion con las dos frases de las
+# diapositivas de clase (VaR-y-ES.pdf): "perdida maxima con confianza X%" +
+# "probabilidad Y% de perder mas de eso".
+cat("Respuesta 4 (VaR al 99%):\n")
+cat("  Normal: la perdida maxima de la inversion, con un 99% de confianza en el ano,",
+    "es de USD", label_dollar()(capital_inicial - quantile(final_dow_normal, alpha)),
+    ". Hay una probabilidad del 1% de que las perdidas de la inversion sean mayores a USD",
+    label_dollar()(capital_inicial - quantile(final_dow_normal, alpha)), "\n")
+cat("  Triangular: la perdida maxima de la inversion, con un 99% de confianza en el ano,",
+    "es de USD", label_dollar()(capital_inicial - quantile(final_dow_tri, alpha)),
+    ". Hay una probabilidad del 1% de que las perdidas de la inversion sean mayores a USD",
+    label_dollar()(capital_inicial - quantile(final_dow_tri, alpha)), "\n")
 
 # PREGUNTA 5: "Cuanto es el valor esperado a perder de la inversion en el
-# 1% de los casos?" -> Esto es el ES al 99%.
-cat("Respuesta 5 (ES al 99%): con la normal,",
-    label_dollar()(capital_inicial - mean(final_dow_normal[final_dow_normal < quantile(final_dow_normal, alpha)])),
-    "; con la triangular,",
-    label_dollar()(capital_inicial - mean(final_dow_tri[final_dow_tri < quantile(final_dow_tri, alpha)])),
-    "- en ambos casos mas severo que el VaR de la pregunta anterior, como debe ser.\n")
+# 1% de los casos?" -> Esto es el ES al 99%. Interpretacion con la frase de
+# las diapositivas de clase para ES: "perdida esperada al X% es de USD Y".
+cat("Respuesta 5 (ES al 99%):\n")
+cat("  Normal: la perdida esperada al 1% en el ano es de USD",
+    label_dollar()(capital_inicial - mean(final_dow_normal[final_dow_normal < quantile(final_dow_normal, alpha)])), "\n")
+cat("  Triangular: la perdida esperada al 1% en el ano es de USD",
+    label_dollar()(capital_inicial - mean(final_dow_tri[final_dow_tri < quantile(final_dow_tri, alpha)])), "\n")
+cat("  (en ambos casos, mas severo que el VaR de la pregunta anterior, como debe ser)\n")
 
 # PREGUNTA 6: "Cual distribucion genera mejores resultados, considerando
 # una politica de aversion al riesgo?"
@@ -164,7 +174,8 @@ cat("Respuesta 6: la normal domina en las dos dimensiones que le importan a algu
 ## Repeticion con Eli Lilly and Company (LLY) - pregunta 7 ----
 
 # PREGUNTA 7: "Repite el ejercicio usando la accion de Eli Lilly and
-# Company, (LLY)."
+# Company, (LLY)." - se responden las 6 preguntas otra vez, completas,
+# igual que para DOW (no se resume).
 
 lly_retornos <- descargar_retornos_semanales("LLY")
 
@@ -186,11 +197,55 @@ tabla_lly <- bind_rows(
 
 print(tabla_lly)
 
-cat("Respuesta 7: a diferencia de DOW, LLY tuvo un retorno semanal promedio positivo (",
+# PREGUNTA 1 (LLY): "Cual es el valor esperado de la inversion al final del ano?"
+cat("Respuesta 1 (LLY): con retornos normales, el valor esperado es",
+    label_dollar()(mean(final_lly_normal)),
+    "; con retornos triangulares,", label_dollar()(mean(final_lly_tri)),
+    "- a diferencia de DOW, LLY tuvo un retorno semanal promedio positivo (",
     label_percent(accuracy = 0.01)(media_lly),
-    "), asi que el valor esperado final queda por encima del capital inicial en ambas",
-    "distribuciones. Igual que con DOW, la normal vuelve a dominar a la triangular en",
-    "valor esperado y en VaR/ES - mismo patron, dos acciones distintas.\n")
+    "), asi que ambos quedan por encima del capital inicial de $10,000.\n")
+
+# PREGUNTA 2 (LLY): "Cual es el valor maximo de la inversion al final del
+# ano? Cuanto representa en ganancias?"
+cat("Respuesta 2 (LLY): el maximo con la normal es", label_dollar()(max(final_lly_normal)),
+    "(", label_dollar()(max(final_lly_normal) - capital_inicial), "de ganancia); con la",
+    "triangular,", label_dollar()(max(final_lly_tri)),
+    "(", label_dollar()(max(final_lly_tri) - capital_inicial), "de ganancia).\n")
+
+# PREGUNTA 3 (LLY): "Cual es el valor minimo de la inversion al final del
+# ano? Cuanto representa en perdidas?"
+cat("Respuesta 3 (LLY): el minimo con la normal es", label_dollar()(min(final_lly_normal)),
+    "(", label_dollar()(capital_inicial - min(final_lly_normal)), "de perdida); con la",
+    "triangular,", label_dollar()(min(final_lly_tri)),
+    "(", label_dollar()(capital_inicial - min(final_lly_tri)), "de perdida).\n")
+
+# PREGUNTA 4 (LLY): "Cual es la maxima perdida posible con una confianza del 99%?"
+cat("Respuesta 4 (LLY, VaR al 99%):\n")
+cat("  Normal: la perdida maxima de la inversion, con un 99% de confianza en el ano,",
+    "es de USD", label_dollar()(capital_inicial - quantile(final_lly_normal, alpha)),
+    ". Hay una probabilidad del 1% de que las perdidas de la inversion sean mayores a USD",
+    label_dollar()(capital_inicial - quantile(final_lly_normal, alpha)), "\n")
+cat("  Triangular: la perdida maxima de la inversion, con un 99% de confianza en el ano,",
+    "es de USD", label_dollar()(capital_inicial - quantile(final_lly_tri, alpha)),
+    ". Hay una probabilidad del 1% de que las perdidas de la inversion sean mayores a USD",
+    label_dollar()(capital_inicial - quantile(final_lly_tri, alpha)), "\n")
+
+# PREGUNTA 5 (LLY): "Cuanto es el valor esperado a perder de la inversion
+# en el 1% de los casos?"
+cat("Respuesta 5 (LLY, ES al 99%):\n")
+cat("  Normal: la perdida esperada al 1% en el ano es de USD",
+    label_dollar()(capital_inicial - mean(final_lly_normal[final_lly_normal < quantile(final_lly_normal, alpha)])), "\n")
+cat("  Triangular: la perdida esperada al 1% en el ano es de USD",
+    label_dollar()(capital_inicial - mean(final_lly_tri[final_lly_tri < quantile(final_lly_tri, alpha)])), "\n")
+
+# PREGUNTA 6 (LLY): "Cual distribucion genera mejores resultados,
+# considerando una politica de aversion al riesgo?"
+cat("Respuesta 6 (LLY): igual que con DOW, la normal vuelve a dominar a la triangular en",
+    "valor esperado y en VaR/ES - mismo patron, dos acciones distintas: aca, la",
+    "triangular (acotada por el peor/mejor retorno historico observado) termina con mas",
+    "riesgo de cola que la normal, no menos, porque su forma comprime la masa de",
+    "probabilidad lejos de la moda hacia los extremos del rango observado al componer",
+    "en 52 semanas.\n")
 
 # ============================================================================================
 # EJERCICIO 2 - Eleccion de la mejor inversion ----
@@ -238,13 +293,30 @@ print(tabla_p2)
 cat("Respuesta:\n")
 cat("1. Valor esperado: (a)", fmt_cop(mean(final_a)), ", (b)", fmt_cop(mean(final_b)),
     ", (c)", fmt_cop(mean(final_c)), "\n")
-cat("2. VaR al 99%: (a)", fmt_cop(capital_p2 - quantile(final_a, alpha)),
-    ", (b)", fmt_cop(capital_p2 - quantile(final_b, alpha)),
-    ", (c)", fmt_cop(capital_p2 - quantile(final_c, alpha)), "\n")
-cat("3. ES en el 1% de los casos: (a)",
-    fmt_cop(capital_p2 - mean(final_a[final_a < quantile(final_a, alpha)])),
-    ", (b)", fmt_cop(capital_p2 - mean(final_b[final_b < quantile(final_b, alpha)])),
-    ", (c)", fmt_cop(capital_p2 - mean(final_c[final_c < quantile(final_c, alpha)])), "\n")
+
+# Interpretacion del VaR con las dos frases de las diapositivas de clase.
+cat("2. VaR al 99%:\n")
+cat("   a) La perdida maxima de la inversion, con un 99% de confianza en el ano, es de",
+    fmt_cop(capital_p2 - quantile(final_a, alpha)),
+    ". Hay una probabilidad del 1% de que las perdidas sean mayores a",
+    fmt_cop(capital_p2 - quantile(final_a, alpha)), "\n")
+cat("   b) La perdida maxima de la inversion, con un 99% de confianza en el ano, es de",
+    fmt_cop(capital_p2 - quantile(final_b, alpha)),
+    ". Hay una probabilidad del 1% de que las perdidas sean mayores a",
+    fmt_cop(capital_p2 - quantile(final_b, alpha)), "\n")
+cat("   c) La perdida maxima de la inversion, con un 99% de confianza en el ano, es de",
+    fmt_cop(capital_p2 - quantile(final_c, alpha)),
+    ". Hay una probabilidad del 1% de que las perdidas sean mayores a",
+    fmt_cop(capital_p2 - quantile(final_c, alpha)), "\n")
+
+# Interpretacion del ES con la frase de las diapositivas de clase.
+cat("3. ES en el 1% de los casos:\n")
+cat("   a) La perdida esperada al 1% en el ano es de",
+    fmt_cop(capital_p2 - mean(final_a[final_a < quantile(final_a, alpha)])), "\n")
+cat("   b) La perdida esperada al 1% en el ano es de",
+    fmt_cop(capital_p2 - mean(final_b[final_b < quantile(final_b, alpha)])), "\n")
+cat("   c) La perdida esperada al 1% en el ano es de",
+    fmt_cop(capital_p2 - mean(final_c[final_c < quantile(final_c, alpha)])), "\n")
 
 ## Recomendacion ----
 

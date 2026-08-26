@@ -151,19 +151,28 @@ la totalidad del capital, el peor de los 10,000 escenarios simulados.
 
 > "4. ¿Cuál es la máxima pérdida posible con una confianza del 99 %?"
 
-**Respuesta:** este es el **VaR al 99%**. Con la normal, la pérdida máxima
-al 99% de confianza es **`r label_dollar()(capital_inicial-quantile(final_dow_normal,alpha))`**;
-con la triangular, **`r label_dollar()(capital_inicial-quantile(final_dow_tri,alpha))`**.
+**Respuesta (VaR al 99%):**
+
+- **Normal:** la pérdida máxima de la inversión, con un 99% de confianza en
+  el año, es de USD `r label_dollar()(capital_inicial-quantile(final_dow_normal,alpha))`.
+  Hay una probabilidad del 1% de que las pérdidas de la inversión sean
+  mayores a USD `r label_dollar()(capital_inicial-quantile(final_dow_normal,alpha))`.
+- **Triangular:** la pérdida máxima de la inversión, con un 99% de
+  confianza en el año, es de USD `r label_dollar()(capital_inicial-quantile(final_dow_tri,alpha))`.
+  Hay una probabilidad del 1% de que las pérdidas de la inversión sean
+  mayores a USD `r label_dollar()(capital_inicial-quantile(final_dow_tri,alpha))`.
 
 > "5. ¿Cuánto es el valor esperado a perder de la inversión en el 1 % de
 > los casos?"
 
-**Respuesta:** este es el **ES al 99%** (promedio de las pérdidas dentro
-del peor 1% de escenarios, no solo el borde). Con la normal,
-**`r label_dollar()(capital_inicial-mean(final_dow_normal[final_dow_normal<quantile(final_dow_normal,alpha)]))`**;
-con la triangular,
-**`r label_dollar()(capital_inicial-mean(final_dow_tri[final_dow_tri<quantile(final_dow_tri,alpha)]))`**
-— en ambos casos más severo que el VaR de la pregunta anterior, como debe
+**Respuesta (ES al 99%):**
+
+- **Normal:** la pérdida esperada al 1% en el año es de USD
+  `r label_dollar()(capital_inicial-mean(final_dow_normal[final_dow_normal<quantile(final_dow_normal,alpha)]))`.
+- **Triangular:** la pérdida esperada al 1% en el año es de USD
+  `r label_dollar()(capital_inicial-mean(final_dow_tri[final_dow_tri<quantile(final_dow_tri,alpha)]))`.
+
+En ambos casos, más severo que el VaR de la pregunta anterior, como debe
 ser.
 
 > "6. ¿Cuál distribución genera mejores resultados, considerando una
@@ -204,18 +213,65 @@ tabla_lly <- bind_rows(
 tabla_lly
 ```
 
-**Respuesta:** a diferencia de DOW, LLY tuvo un retorno semanal promedio
-**positivo**
-(`r label_percent(accuracy=0.01)(media_lly)`), así que el valor esperado
-final queda **por encima** del capital inicial en ambas distribuciones
-(`r label_dollar()(mean(final_lly_normal))` normal,
-`r label_dollar()(mean(final_lly_tri))` triangular). Igual que con DOW, la
-**normal vuelve a dominar** a la triangular en valor esperado y en
-VaR/ES — mismo patrón, dos acciones distintas: acá, la triangular
-(acotada por el peor/mejor retorno histórico observado) termina con más
-riesgo de cola que la normal, no menos, porque su forma comprime la masa
-de probabilidad lejos de la moda hacia los extremos del rango observado al
-compuesto en 52 semanas.
+> "1. ¿Cuál es el valor esperado de la inversión al final del año?"
+
+**Respuesta:** con retornos normales, el valor esperado es
+**`r label_dollar()(mean(final_lly_normal))`**; con retornos triangulares,
+**`r label_dollar()(mean(final_lly_tri))`** — a diferencia de DOW, LLY tuvo
+un retorno semanal promedio **positivo**
+(`r label_percent(accuracy=0.01)(media_lly)`) en el periodo histórico
+usado, así que ambos quedan por encima del capital inicial de \$10,000.
+
+> "2. ¿Cuál es el valor máximo de la inversión al final del año? ¿Cuánto
+> representa en ganancias?"
+
+**Respuesta:** el máximo con la normal es
+**`r label_dollar()(max(final_lly_normal))`**
+(`r label_dollar()(max(final_lly_normal)-capital_inicial)` de ganancia); con
+la triangular, **`r label_dollar()(max(final_lly_tri))`**
+(`r label_dollar()(max(final_lly_tri)-capital_inicial)` de ganancia).
+
+> "3. ¿Cuál es el valor mínimo de la inversión al final del año? ¿Cuánto
+> representa en pérdidas?"
+
+**Respuesta:** el mínimo con la normal es
+**`r label_dollar()(min(final_lly_normal))`**
+(`r label_dollar()(capital_inicial-min(final_lly_normal))` de pérdida); con
+la triangular, **`r label_dollar()(min(final_lly_tri))`**
+(`r label_dollar()(capital_inicial-min(final_lly_tri))` de pérdida).
+
+> "4. ¿Cuál es la máxima pérdida posible con una confianza del 99 %?"
+
+**Respuesta (VaR al 99%):**
+
+- **Normal:** la pérdida máxima de la inversión, con un 99% de confianza en
+  el año, es de USD `r label_dollar()(capital_inicial-quantile(final_lly_normal,alpha))`.
+  Hay una probabilidad del 1% de que las pérdidas de la inversión sean
+  mayores a USD `r label_dollar()(capital_inicial-quantile(final_lly_normal,alpha))`.
+- **Triangular:** la pérdida máxima de la inversión, con un 99% de
+  confianza en el año, es de USD `r label_dollar()(capital_inicial-quantile(final_lly_tri,alpha))`.
+  Hay una probabilidad del 1% de que las pérdidas de la inversión sean
+  mayores a USD `r label_dollar()(capital_inicial-quantile(final_lly_tri,alpha))`.
+
+> "5. ¿Cuánto es el valor esperado a perder de la inversión en el 1 % de
+> los casos?"
+
+**Respuesta (ES al 99%):**
+
+- **Normal:** la pérdida esperada al 1% en el año es de USD
+  `r label_dollar()(capital_inicial-mean(final_lly_normal[final_lly_normal<quantile(final_lly_normal,alpha)]))`.
+- **Triangular:** la pérdida esperada al 1% en el año es de USD
+  `r label_dollar()(capital_inicial-mean(final_lly_tri[final_lly_tri<quantile(final_lly_tri,alpha)]))`.
+
+> "6. ¿Cuál distribución genera mejores resultados, considerando una
+> política de aversión al riesgo?"
+
+**Respuesta:** igual que con DOW, la **normal vuelve a dominar** a la
+triangular en valor esperado y en VaR/ES — mismo patrón, dos acciones
+distintas: acá, la triangular (acotada por el peor/mejor retorno histórico
+observado) termina con más riesgo de cola que la normal, no menos, porque
+su forma comprime la masa de probabilidad lejos de la moda hacia los
+extremos del rango observado al compuesto en 52 semanas.
 
 ------------------------------------------------------------------------
 
@@ -270,15 +326,32 @@ tabla_p2
 
 **Respuesta:**
 
-1. **Valor esperado**: (a) `r fmt_cop(mean(final_a))`, (b)
-   `r fmt_cop(mean(final_b))`, (c) `r fmt_cop(mean(final_c))`.
-2. **VaR al 99%**: (a) `r fmt_cop(capital_p2-quantile(final_a,alpha))`, (b)
-   `r fmt_cop(capital_p2-quantile(final_b,alpha))`, (c)
-   `r fmt_cop(capital_p2-quantile(final_c,alpha))`.
-3. **ES en el 1% de los casos**: (a)
-   `r fmt_cop(capital_p2-mean(final_a[final_a<quantile(final_a,alpha)]))`,
-   (b) `r fmt_cop(capital_p2-mean(final_b[final_b<quantile(final_b,alpha)]))`,
-   (c) `r fmt_cop(capital_p2-mean(final_c[final_c<quantile(final_c,alpha)]))`.
+**1. Valor esperado:** (a) `r fmt_cop(mean(final_a))`, (b)
+`r fmt_cop(mean(final_b))`, (c) `r fmt_cop(mean(final_c))`.
+
+**2. VaR al 99%:**
+
+- **a)** La pérdida máxima de la inversión, con un 99% de confianza en el
+  año, es de `r fmt_cop(capital_p2-quantile(final_a,alpha))`. Hay una
+  probabilidad del 1% de que las pérdidas de la inversión sean mayores a
+  `r fmt_cop(capital_p2-quantile(final_a,alpha))`.
+- **b)** La pérdida máxima de la inversión, con un 99% de confianza en el
+  año, es de `r fmt_cop(capital_p2-quantile(final_b,alpha))`. Hay una
+  probabilidad del 1% de que las pérdidas de la inversión sean mayores a
+  `r fmt_cop(capital_p2-quantile(final_b,alpha))`.
+- **c)** La pérdida máxima de la inversión, con un 99% de confianza en el
+  año, es de `r fmt_cop(capital_p2-quantile(final_c,alpha))`. Hay una
+  probabilidad del 1% de que las pérdidas de la inversión sean mayores a
+  `r fmt_cop(capital_p2-quantile(final_c,alpha))`.
+
+**3. ES en el 1% de los casos:**
+
+- **a)** La pérdida esperada al 1% en el año es de
+  `r fmt_cop(capital_p2-mean(final_a[final_a<quantile(final_a,alpha)]))`.
+- **b)** La pérdida esperada al 1% en el año es de
+  `r fmt_cop(capital_p2-mean(final_b[final_b<quantile(final_b,alpha)]))`.
+- **c)** La pérdida esperada al 1% en el año es de
+  `r fmt_cop(capital_p2-mean(final_c[final_c<quantile(final_c,alpha)]))`.
 
 ## Recomendación
 

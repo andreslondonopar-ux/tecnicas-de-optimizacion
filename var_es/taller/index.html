@@ -1675,7 +1675,7 @@ data.frame(
 )</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["accion"],"name":[1],"type":["chr"],"align":["left"]},{"label":["n_semanas_historia"],"name":[2],"type":["int"],"align":["right"]},{"label":["retorno_semanal_promedio_pct"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["desv_estandar_pct"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["retorno_min_pct"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["retorno_max_pct"],"name":[6],"type":["dbl"],"align":["right"]}],"data":[{"1":"DOW","2":"158","3":"-0.2558965","4":"4.865336","5":"-19.75712","6":"14.28347"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":["accion"],"name":[1],"type":["chr"],"align":["left"]},{"label":["n_semanas_historia"],"name":[2],"type":["int"],"align":["right"]},{"label":["retorno_semanal_promedio_pct"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["desv_estandar_pct"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["retorno_min_pct"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["retorno_max_pct"],"name":[6],"type":["dbl"],"align":["right"]}],"data":[{"1":"DOW","2":"158","3":"-0.2558966","4":"4.865336","5":"-19.75712","6":"14.28347"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 </div>
@@ -1741,7 +1741,7 @@ tabla_dow &lt;- bind_rows(
 tabla_dow</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["distribución"],"name":[1],"type":["chr"],"align":["left"]},{"label":["valor_esperado"],"name":[2],"type":["chr"],"align":["left"]},{"label":["valor_maximo"],"name":[3],"type":["chr"],"align":["left"]},{"label":["ganancia_maxima"],"name":[4],"type":["chr"],"align":["left"]},{"label":["valor_minimo"],"name":[5],"type":["chr"],"align":["left"]},{"label":["perdida_maxima_obs"],"name":[6],"type":["chr"],"align":["left"]},{"label":["VaR"],"name":[7],"type":["chr"],"align":["left"]},{"label":["ES"],"name":[8],"type":["chr"],"align":["left"]}],"data":[{"1":"Normal","2":"$8,758.13","3":"$33,188.59","4":"$23,188.59","5":"$2,068.11","6":"$7,931.89","7":"$6,433.80","8":"$6,843.37","_rn_":"1%...1"},{"1":"Triangular","2":"$3,689.82","3":"$21,429.71","4":"$11,429.71","5":"$442.59","6":"$9,557.41","7":"$9,027.74","8":"$9,170.23","_rn_":"1%...2"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["distribución"],"name":[1],"type":["chr"],"align":["left"]},{"label":["valor_esperado"],"name":[2],"type":["chr"],"align":["left"]},{"label":["valor_maximo"],"name":[3],"type":["chr"],"align":["left"]},{"label":["ganancia_maxima"],"name":[4],"type":["chr"],"align":["left"]},{"label":["valor_minimo"],"name":[5],"type":["chr"],"align":["left"]},{"label":["perdida_maxima_obs"],"name":[6],"type":["chr"],"align":["left"]},{"label":["VaR"],"name":[7],"type":["chr"],"align":["left"]},{"label":["ES"],"name":[8],"type":["chr"],"align":["left"]}],"data":[{"1":"Normal","2":"$8,758.13","3":"$33,188.60","4":"$23,188.60","5":"$2,068.11","6":"$7,931.89","7":"$6,433.80","8":"$6,843.38","_rn_":"1%...1"},{"1":"Triangular","2":"$3,689.82","3":"$21,429.72","4":"$11,429.72","5":"$442.59","6":"$9,557.41","7":"$9,027.74","8":"$9,170.23","_rn_":"1%...2"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
 </div>
@@ -1760,8 +1760,8 @@ $10,000, porque DOW tuvo un retorno semanal promedio
 ¿Cuánto representa en ganancias?”</p>
 </blockquote>
 <p><strong>Respuesta:</strong> el máximo con la normal es
-<strong>$33,188.59</strong> ($23,188.59 de ganancia); con la triangular,
-<strong>$21,429.71</strong> ($11,429.71 de ganancia).</p>
+<strong>$33,188.60</strong> ($23,188.60 de ganancia); con la triangular,
+<strong>$21,429.72</strong> ($11,429.72 de ganancia).</p>
 <blockquote>
 <p>“3. ¿Cuál es el valor mínimo de la inversión al final del año?
 ¿Cuánto representa en pérdidas?”</p>
@@ -1774,19 +1774,30 @@ capital, el peor de los 10,000 escenarios simulados.</p>
 <p>“4. ¿Cuál es la máxima pérdida posible con una confianza del 99
 %?”</p>
 </blockquote>
-<p><strong>Respuesta:</strong> este es el <strong>VaR al 99%</strong>.
-Con la normal, la pérdida máxima al 99% de confianza es
-<strong>$6,433.80</strong>; con la triangular,
-<strong>$9,027.74</strong>.</p>
+<p><strong>Respuesta (VaR al 99%):</strong></p>
+<ul>
+<li><strong>Normal:</strong> la pérdida máxima de la inversión, con un
+99% de confianza en el año, es de USD $6,433.80. Hay una probabilidad
+del 1% de que las pérdidas de la inversión sean mayores a USD
+$6,433.80.</li>
+<li><strong>Triangular:</strong> la pérdida máxima de la inversión, con
+un 99% de confianza en el año, es de USD $9,027.74. Hay una probabilidad
+del 1% de que las pérdidas de la inversión sean mayores a USD
+$9,027.74.</li>
+</ul>
 <blockquote>
 <p>“5. ¿Cuánto es el valor esperado a perder de la inversión en el 1 %
 de los casos?”</p>
 </blockquote>
-<p><strong>Respuesta:</strong> este es el <strong>ES al 99%</strong>
-(promedio de las pérdidas dentro del peor 1% de escenarios, no solo el
-borde). Con la normal, <strong>$6,843.37</strong>; con la triangular,
-<strong>$9,170.23</strong> — en ambos casos más severo que el VaR de la
-pregunta anterior, como debe ser.</p>
+<p><strong>Respuesta (ES al 99%):</strong></p>
+<ul>
+<li><strong>Normal:</strong> la pérdida esperada al 1% en el año es de
+USD $6,843.38.</li>
+<li><strong>Triangular:</strong> la pérdida esperada al 1% en el año es
+de USD $9,170.23.</li>
+</ul>
+<p>En ambos casos, más severo que el VaR de la pregunta anterior, como
+debe ser.</p>
 <blockquote>
 <p>“6. ¿Cuál distribución genera mejores resultados, considerando una
 política de aversión al riesgo?”</p>
@@ -1826,19 +1837,69 @@ tabla_lly &lt;- bind_rows(
 tabla_lly</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["distribución"],"name":[1],"type":["chr"],"align":["left"]},{"label":["valor_esperado"],"name":[2],"type":["chr"],"align":["left"]},{"label":["valor_maximo"],"name":[3],"type":["chr"],"align":["left"]},{"label":["ganancia_maxima"],"name":[4],"type":["chr"],"align":["left"]},{"label":["valor_minimo"],"name":[5],"type":["chr"],"align":["left"]},{"label":["perdida_maxima_obs"],"name":[6],"type":["chr"],"align":["left"]},{"label":["VaR"],"name":[7],"type":["chr"],"align":["left"]},{"label":["ES"],"name":[8],"type":["chr"],"align":["left"]}],"data":[{"1":"Normal","2":"$13,991.06","3":"$56,528.08","4":"$46,528.08","5":"$3,053.18","6":"$6,946.82","7":"$4,585.39","8":"$5,234.79","_rn_":"1%...1"},{"1":"Triangular","2":"$6,006.96","3":"$37,554.94","4":"$27,554.94","5":"$651.00","6":"$9,349.00","7":"$8,518.89","8":"$8,744.36","_rn_":"1%...2"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["distribución"],"name":[1],"type":["chr"],"align":["left"]},{"label":["valor_esperado"],"name":[2],"type":["chr"],"align":["left"]},{"label":["valor_maximo"],"name":[3],"type":["chr"],"align":["left"]},{"label":["ganancia_maxima"],"name":[4],"type":["chr"],"align":["left"]},{"label":["valor_minimo"],"name":[5],"type":["chr"],"align":["left"]},{"label":["perdida_maxima_obs"],"name":[6],"type":["chr"],"align":["left"]},{"label":["VaR"],"name":[7],"type":["chr"],"align":["left"]},{"label":["ES"],"name":[8],"type":["chr"],"align":["left"]}],"data":[{"1":"Normal","2":"$13,991.06","3":"$56,528.07","4":"$46,528.07","5":"$3,053.18","6":"$6,946.82","7":"$4,585.39","8":"$5,234.79","_rn_":"1%...1"},{"1":"Triangular","2":"$6,006.94","3":"$37,554.80","4":"$27,554.80","5":"$650.99","6":"$9,349.01","7":"$8,518.89","8":"$8,744.36","_rn_":"1%...2"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
-<p><strong>Respuesta:</strong> a diferencia de DOW, LLY tuvo un retorno
-semanal promedio <strong>positivo</strong> (0.65%), así que el valor
-esperado final queda <strong>por encima</strong> del capital inicial en
-ambas distribuciones ($13,991.06 normal, $6,006.96 triangular). Igual
-que con DOW, la <strong>normal vuelve a dominar</strong> a la triangular
-en valor esperado y en VaR/ES — mismo patrón, dos acciones distintas:
-acá, la triangular (acotada por el peor/mejor retorno histórico
-observado) termina con más riesgo de cola que la normal, no menos,
-porque su forma comprime la masa de probabilidad lejos de la moda hacia
-los extremos del rango observado al compuesto en 52 semanas.</p>
+<blockquote>
+<p>“1. ¿Cuál es el valor esperado de la inversión al final del año?”</p>
+</blockquote>
+<p><strong>Respuesta:</strong> con retornos normales, el valor esperado
+es <strong>$13,991.06</strong>; con retornos triangulares,
+<strong>$6,006.94</strong> — a diferencia de DOW, LLY tuvo un retorno
+semanal promedio <strong>positivo</strong> (0.65%) en el periodo
+histórico usado, así que ambos quedan por encima del capital inicial de
+$10,000.</p>
+<blockquote>
+<p>“2. ¿Cuál es el valor máximo de la inversión al final del año?
+¿Cuánto representa en ganancias?”</p>
+</blockquote>
+<p><strong>Respuesta:</strong> el máximo con la normal es
+<strong>$56,528.07</strong> ($46,528.07 de ganancia); con la triangular,
+<strong>$37,554.80</strong> ($27,554.80 de ganancia).</p>
+<blockquote>
+<p>“3. ¿Cuál es el valor mínimo de la inversión al final del año?
+¿Cuánto representa en pérdidas?”</p>
+</blockquote>
+<p><strong>Respuesta:</strong> el mínimo con la normal es
+<strong>$3,053.18</strong> ($6,946.82 de pérdida); con la triangular,
+<strong>$650.99</strong> ($9,349.01 de pérdida).</p>
+<blockquote>
+<p>“4. ¿Cuál es la máxima pérdida posible con una confianza del 99
+%?”</p>
+</blockquote>
+<p><strong>Respuesta (VaR al 99%):</strong></p>
+<ul>
+<li><strong>Normal:</strong> la pérdida máxima de la inversión, con un
+99% de confianza en el año, es de USD $4,585.39. Hay una probabilidad
+del 1% de que las pérdidas de la inversión sean mayores a USD
+$4,585.39.</li>
+<li><strong>Triangular:</strong> la pérdida máxima de la inversión, con
+un 99% de confianza en el año, es de USD $8,518.89. Hay una probabilidad
+del 1% de que las pérdidas de la inversión sean mayores a USD
+$8,518.89.</li>
+</ul>
+<blockquote>
+<p>“5. ¿Cuánto es el valor esperado a perder de la inversión en el 1 %
+de los casos?”</p>
+</blockquote>
+<p><strong>Respuesta (ES al 99%):</strong></p>
+<ul>
+<li><strong>Normal:</strong> la pérdida esperada al 1% en el año es de
+USD $5,234.79.</li>
+<li><strong>Triangular:</strong> la pérdida esperada al 1% en el año es
+de USD $8,744.36.</li>
+</ul>
+<blockquote>
+<p>“6. ¿Cuál distribución genera mejores resultados, considerando una
+política de aversión al riesgo?”</p>
+</blockquote>
+<p><strong>Respuesta:</strong> igual que con DOW, la <strong>normal
+vuelve a dominar</strong> a la triangular en valor esperado y en VaR/ES
+— mismo patrón, dos acciones distintas: acá, la triangular (acotada por
+el peor/mejor retorno histórico observado) termina con más riesgo de
+cola que la normal, no menos, porque su forma comprime la masa de
+probabilidad lejos de la moda hacia los extremos del rango observado al
+compuesto en 52 semanas.</p>
 <hr />
 </div>
 </div>
@@ -1895,17 +1956,29 @@ tabla_p2</code></pre>
   </script>
 </div>
 <p><strong>Respuesta:</strong></p>
-<ol style="list-style-type: decimal">
-<li><strong>Valor esperado</strong>: (a) COP $10.799.202, (b) COP
-$16.267.740, (c) COP $12.924.544.</li>
-<li><strong>VaR al 99%</strong>: (a) COP $2.694.485, (b) COP $1.071.737,
-(c) COP $3.586.716.</li>
-<li><strong>ES en el 1% de los casos</strong>: (a) COP $3.224.843,
-<ol start="2" style="list-style-type: lower-alpha">
-<li>COP $1.785.090,</li>
-<li>COP $4.172.417.</li>
-</ol></li>
-</ol>
+<p><strong>1. Valor esperado:</strong> (a) COP $10.799.202, (b) COP
+$16.267.740, (c) COP $12.924.544.</p>
+<p><strong>2. VaR al 99%:</strong></p>
+<ul>
+<li><strong>a)</strong> La pérdida máxima de la inversión, con un 99% de
+confianza en el año, es de COP $2.694.485. Hay una probabilidad del 1%
+de que las pérdidas de la inversión sean mayores a COP $2.694.485.</li>
+<li><strong>b)</strong> La pérdida máxima de la inversión, con un 99% de
+confianza en el año, es de COP $1.071.737. Hay una probabilidad del 1%
+de que las pérdidas de la inversión sean mayores a COP $1.071.737.</li>
+<li><strong>c)</strong> La pérdida máxima de la inversión, con un 99% de
+confianza en el año, es de COP $3.586.716. Hay una probabilidad del 1%
+de que las pérdidas de la inversión sean mayores a COP $3.586.716.</li>
+</ul>
+<p><strong>3. ES en el 1% de los casos:</strong></p>
+<ul>
+<li><strong>a)</strong> La pérdida esperada al 1% en el año es de COP
+$3.224.843.</li>
+<li><strong>b)</strong> La pérdida esperada al 1% en el año es de COP
+$1.785.090.</li>
+<li><strong>c)</strong> La pérdida esperada al 1% en el año es de COP
+$4.172.417.</li>
+</ul>
 <div id="recomendación" class="section level2">
 <h2>Recomendación</h2>
 <p>La opción <strong>b) (triangular, retornos mensuales)</strong> domina
