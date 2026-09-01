@@ -156,7 +156,12 @@ hc_dinamico <- highcharter::highchart(type = "stock") %>%
   hc_yAxis(labels = list(format = "{value:.1f}%")) %>%
   hc_exporting(enabled = TRUE) %>%
   hc_navigator(height = 10)
-hc_dinamico  # en RStudio se muestra en el panel Viewer
+# NOTA: print() explicito, no dejar hc_dinamico suelto - si este script se
+# corre con el boton "Source" de RStudio (source() con print.eval=FALSE por
+# defecto), un widget de highcharter que quede suelto al final de un bloque
+# NO se muestra (ni error ni aviso). Con print() se muestra siempre, sin
+# importar como se corra el script.
+print(hc_dinamico)
 
 # ============================================================================================
 # PREGUNTA 7 - Portafolio con proporciones diferentes ----

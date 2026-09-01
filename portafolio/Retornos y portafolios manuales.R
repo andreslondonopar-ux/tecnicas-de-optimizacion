@@ -172,9 +172,17 @@ dibujar(retornos_mes_long %>%
 
 ## 4.2. Highcharter ----
 
+# NOTA: cada grafico de highcharter se envuelve en print() a proposito. Si
+# corres este script con el boton "Source" de RStudio (source() con
+# print.eval=FALSE por defecto), un grafico de highcharter que quede suelto
+# al final de un bloque de codigo (sin print() ni asignar+imprimir) NO se
+# muestra - ni error ni aviso, simplemente no aparece en el panel Viewer.
+# Con print() explicito se muestra siempre, sin importar como se corra el
+# script (Source, Source con Echo, o linea por linea con Ctrl+Enter).
+
 ### 4.2.1. Graficos de evolucion de los retornos ----
 
-highcharter::highchart(type = "stock") %>%
+print(highcharter::highchart(type = "stock") %>%
   hc_title(text="Retornos mensuales") %>%
   hc_add_series(data = retornos_mes[, symbols[1]]*100, name = symbols[1]) %>%
   hc_add_series(data = retornos_mes[, symbols[2]]*100, name = symbols[2]) %>%
@@ -185,9 +193,9 @@ highcharter::highchart(type = "stock") %>%
   hc_add_theme(hc_theme_gridlight()) %>%
   hc_yAxis(labels = list(format = "{value:.1f}%")) %>%
   hc_exporting(enabled = T) %>%
-  hc_navigator(height = 10)
+  hc_navigator(height = 10))
 
-highcharter::highchart(type = "stock") %>%
+print(highcharter::highchart(type = "stock") %>%
   hc_title(text="Retornos semanales") %>%
   hc_add_series(data = retornos_semana[, symbols[1]]*100, name = symbols[1]) %>%
   hc_add_series(data = retornos_semana[, symbols[2]]*100, name = symbols[2]) %>%
@@ -198,13 +206,13 @@ highcharter::highchart(type = "stock") %>%
   hc_add_theme(hc_theme_gridlight()) %>%
   hc_yAxis(labels = list(format = "{value:.1f}%")) %>%
   hc_exporting(enabled = T) %>%
-  hc_navigator(height = 10)
+  hc_navigator(height = 10))
 
 ### 4.2.2. Histogramas ----
 
 hc_hist <- hist(retornos_mes[,symbols[1]]*100, plot = F)
 
-hchart(hc_hist, color = "cornflowerblue") %>%
+print(hchart(hc_hist, color = "cornflowerblue") %>%
   hc_title(text =
              paste(symbols[1],
                    "Distribución de los retornos")) %>%
@@ -212,7 +220,7 @@ hchart(hc_hist, color = "cornflowerblue") %>%
   hc_xAxis(labels = list(format = "{value:.1f}%")) %>%
   hc_exporting(enabled = T) %>%
   hc_legend(enabled = F) %>%
-  hc_navigator(height = 10)
+  hc_navigator(height = 10))
 
 # 4. Construccion de un portafolio con pesos definidos ----
 
@@ -243,7 +251,7 @@ portfolio_retornos_mes <- PerformanceAnalytics::Return.portfolio(R = retornos_me
 
 ## 4.3. Grafico en highchart ----
 
-highchart(type = "stock") %>%
+print(highchart(type = "stock") %>%
   hc_title(text = "Retornos mensuales de los portafolios") %>%
   hc_add_series(portfolio_retornos_mes$retornos*100,
                 name = "Retornos rebalanceados mensualmente",
@@ -252,7 +260,7 @@ highchart(type = "stock") %>%
   hc_yAxis(labels = list(format = "{value:.1f}%")) %>%
   hc_legend(enabled = T) %>%
   hc_exporting(enabled = T) %>%
-  hc_navigator(height = 10)
+  hc_navigator(height = 10))
 
 # NOTA: ruta ajustada - se guarda en la carpeta actual (Portafolio/) en vez
 # de "Data/..." (esa subcarpeta no existe acá).
