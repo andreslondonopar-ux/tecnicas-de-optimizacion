@@ -1,0 +1,266 @@
+---
+title: "Retornos y portafolios manuales — repaso con teoría"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Configuración inicial
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, EnvStats, ggpubr, psych, quantmod, TTR,
+               purrr, PerformanceAnalytics, highcharter, timetk, readxl, scales, htmlwidgets)
+options(scipen = 999)
+```
+
+------------------------------------------------------------------------
+
+# Parte 1 — Carga de precios
+
+**Qué hace**: descarga los precios de cierre ajustados de 5 ETFs desde
+Yahoo Finance, y muestra tres formas alternativas de cargar los mismos
+datos (CSV local, Excel local, URL web) — útil cuando no se tiene conexión
+en vivo o se quiere reproducir un análisis con un snapshot fijo de datos.
+
+**Por qué (teoría)**: en vez de comprar decenas de acciones individuales
+para diversificar, se usan **ETFs como proxies de clases de activo
+completas**:
+
+- **SPY** — S&P 500 (renta variable EE.UU., large-cap)
+- **EFA** — MSCI EAFE (renta variable internacional desarrollada)
+- **IJS** — S&P Small-Cap 600 Value (renta variable EE.UU., small-cap value)
+- **EEM** — MSCI Emerging Markets (renta variable mercados emergentes)
+- **AGG** — Core U.S. Aggregate Bond (renta fija EE.UU.)
+
+Cinco clases de activo con drivers de riesgo distintos — la base para
+construir un portafolio diversificado.
+
+```{r descarga-yahoo}
+symbols <- c("SPY","EFA", "IJS", "EEM", "AGG")
+
+precios <- quantmod::getSymbols(symbols,
+                                src = 'yahoo',
+                                from = "2010-12-31",
+                                periodicity = "daily",
+                                auto.assign = TRUE,
+                                warnings = FALSE) %>%
+    purrr::map(~quantmod::Ad(get(.))) %>%
+    purrr::reduce(merge.xts) %>%
+    `colnames<-`(symbols)
+
+cat("Descargados", nrow(precios), "días, de", format(zoo::index(precios)[1]),
+    "a", format(zoo::index(precios)[nrow(precios)]), "\n")
+tail(precios)
+```
+
+```{r carga-alternativas}
+precios_csv <- read_csv("datos_etf.csv",
+                        col_types = cols(date = col_date(format = "%Y-%m-%d"))) %>%
+    timetk::tk_xts(date_var = date)
+
+precios_xlsx <- readxl::read_excel("datos_etf.xlsx",
+                                   col_types = c("date", rep("numeric", 5))) %>%
+    timetk::tk_xts(date_var = date)
+
+url <- "https://raw.githubusercontent.com/salas317/Data/main/TOSF/datos_etf.csv"
+precios_url <- read_csv(file = url,
+                        col_types = cols(date = col_date(format = "%Y-%m-%d"))) %>%
+  timetk::tk_xts(date_var = date)
+
+data.frame(fuente = c("Yahoo (en vivo)", "CSV local", "Excel local", "URL web"),
+           filas = c(nrow(precios), nrow(precios_csv), nrow(precios_xlsx), nrow(precios_url)))
+```
+
+------------------------------------------------------------------------
+
+# Parte 2 — Cambio de frecuencia de los precios
+
+**Qué hace**: `xts::to.weekly()`/`to.monthly()`/`to.quarterly()`/`to.yearly()`
+resamplean la serie diaria, quedándose con el precio de cierre de cada
+periodo.
+
+**Por qué (teoría)**: la frecuencia del análisis debe coincidir con el
+horizonte de la decisión. Un portafolio que se rebalancea una vez al mes
+necesita retornos mensuales, no diarios — usar la frecuencia equivocada
+distorsiona tanto la volatilidad estimada (los retornos diarios tienen
+mucho más ruido de microestructura) como la velocidad de rebalanceo
+implícita en el análisis.
+
+```{r frecuencias}
+precios_mes <- xts::to.monthly(x = precios, indexAt = "lastof", OHLC = FALSE)
+precios_semana <- xts::to.weekly(x = precios, OHLC = FALSE)
+precios_trimestre <- xts::to.quarterly(x = precios, indexAt = "lastof", OHLC = FALSE)
+precios_anual <- xts::to.yearly(x = precios, OHLC = FALSE)
+
+data.frame(frecuencia = c("Diaria", "Semanal", "Mensual", "Trimestral", "Anual"),
+           observaciones = c(nrow(precios), nrow(precios_semana), nrow(precios_mes),
+                              nrow(precios_trimestre), nrow(precios_anual)))
+```
+
+------------------------------------------------------------------------
+
+# Parte 3 — Cálculo de los retornos continuos
+
+**Qué hace**: calcula el retorno logarítmico —
+$\ln(P_t / P_{t-1})$ — a cada una de las 5 frecuencias.
+
+**Por qué (teoría)**: a diferencia del retorno simple, el retorno continuo
+(logarítmico) es **aditivo en el tiempo**: el retorno de 3 meses es
+exactamente la suma de los 3 retornos mensuales individuales
+($r_{1,3} = r_1 + r_2 + r_3$), lo que simplifica muchísimo la agregación
+temporal y es la convención estándar en la literatura de riesgo financiero.
+
+```{r retornos}
+# NOTA: se usa diff(log(x)) en vez de TTR::ROC(type="continuous") - con las
+# librerías cargadas en este notebook (highcharter, PerformanceAnalytics,
+# EnvStats, etc. todas juntas), TTR::ROC() sobre un objeto de to.weekly()/
+# to.monthly()/etc. crashea el proceso R sin ningún mensaje de error
+# (reproducido incluso con datos sintéticos, ver CLAUDE.md). diff(log(x)) da
+# exactamente el mismo resultado matemático y no tiene ese problema.
+
+retornos_diarios <- diff(log(precios)) %>% na.omit()
+retornos_semana <- diff(log(precios_semana)) %>% na.omit()
+retornos_mes <- diff(log(precios_mes)) %>% na.omit()
+retornos_trimestre <- diff(log(precios_trimestre)) %>% na.omit()
+retornos_anual <- diff(log(precios_anual)) %>% na.omit()
+
+tail(retornos_mes)
+```
+
+------------------------------------------------------------------------
+
+# Parte 4 — Visualización de los retornos
+
+**Qué hace**: histogramas, densidad y evolución en el tiempo de los
+retornos mensuales, comparando las 5 clases de activo.
+
+**Por qué (teoría)**: antes de combinar activos en un portafolio conviene
+ver cómo se comporta cada uno por separado — qué tan dispersos son sus
+retornos, si la distribución es simétrica o tiene sesgo, y si se mueven
+juntos o de forma independiente en el tiempo. Esa intuición visual es la
+base de por qué diversificar entre clases de activo reduce el riesgo total.
+
+```{r retornos-long}
+retornos_mes_long <- retornos_mes %>%
+    tk_tbl(rename_index = "date") %>%
+    gather(key = activo, value = retorno, -date, factor_key = T)
+```
+
+```{r dibujar-helper}
+# NOTA: EnvStats cargado junto con tidyverse/ggplot2 rompe la dispatch de
+# print() sobre objetos ggplot (ggplot2 4.x usa S7; con EnvStats cargado,
+# print(p) no dibuja nada y en vez de eso vuelca la estructura interna del
+# objeto como texto - ver CLAUDE.md). Se dibuja el grob directamente en vez
+# de depender de print().
+dibujar <- function(p) {
+  grid::grid.newpage()
+  grid::grid.draw(ggplot2::ggplotGrob(p))
+}
+```
+
+## Histograma — todos los activos juntos
+
+```{r hist-junto}
+dibujar(retornos_mes_long %>%
+    ggplot(mapping = aes(x = retorno, fill = activo, color = activo)) +
+    geom_histogram(alpha = 0.45, binwidth = 0.005) +
+    labs(title = "Retornos mensuales", x = "Retornos", y = "Frecuencia") +
+    theme_light() +
+    scale_x_continuous(labels = label_percent(0.01)) +
+    theme(panel.grid = element_blank()))
+```
+
+## Histograma — separado por activo
+
+```{r hist-separado}
+dibujar(retornos_mes_long %>%
+    ggplot(mapping = aes(x = retorno, fill = activo, color = activo)) +
+    geom_histogram(alpha = 0.45, binwidth = 0.005) +
+    labs(title = "Retornos mensuales por activo", x = "Retornos", y = "Frecuencia") +
+    theme_light() +
+    scale_x_continuous(labels = label_percent(0.01)) +
+    facet_wrap(~activo) +
+    theme(panel.grid = element_blank()))
+```
+
+## Densidad de los retornos
+
+```{r densidad}
+dibujar(retornos_mes_long %>%
+    ggplot(mapping = aes(x = retorno, color = activo)) +
+    geom_density(alpha = 1, linewidth = 0.7) +
+    labs(title = "Densidad de retornos mensuales por activo", x = "Retornos", y = "Distribución") +
+    theme_light() +
+    scale_x_continuous(labels = label_percent(0.01)) +
+    theme(panel.grid = element_blank()))
+```
+
+## Evolución de los retornos en el tiempo
+
+```{r lineas}
+dibujar(retornos_mes_long %>%
+    ggplot(mapping = aes(y = retorno, x = date, color = activo)) +
+    geom_line(alpha = 1, linewidth = 0.6) +
+    labs(title = "Retornos mensuales por activo", x = "Mes", y = "Retorno") +
+    theme_light() +
+    scale_y_continuous(labels = label_percent(0.01)) +
+    theme(panel.grid = element_blank()))
+```
+
+------------------------------------------------------------------------
+
+# Parte 5 — Construcción de un portafolio con pesos definidos
+
+**Qué hace**: combina los 5 ETFs con pesos fijos —
+25% SPY, 25% EFA, 20% IJS, 20% EEM, 10% AGG — de dos formas distintas, y
+verifica que ambas dan el mismo resultado.
+
+**Por qué (teoría)**: el retorno de un portafolio con pesos $w_i$ es el
+promedio ponderado de los retornos de sus componentes,
+$r_p = \sum_i w_i r_i$ — la forma "a pie" hace ese cálculo explícito;
+`PerformanceAnalytics::Return.portfolio()` hace lo mismo pero además maneja
+el **rebalanceo** (volver a los pesos objetivo periódicamente, ya que los
+pesos reales se desvían solos conforme cada activo sube o baja de precio) —
+la función que realmente se usa en la práctica, una vez se entiende la
+mecánica detrás.
+
+```{r portafolio}
+w <- c(0.25, 0.25, 0.20, 0.20, 0.10)
+
+## Cálculo "a pie"
+accion1_mes <- retornos_mes[,1]
+accion2_mes <- retornos_mes[,2]
+accion3_mes <- retornos_mes[,3]
+accion4_mes <- retornos_mes[,4]
+accion5_mes <- retornos_mes[,5]
+
+portfolio_retornos_mes_pie <- w[1]*accion1_mes +
+  w[2]*accion2_mes +
+  w[3]*accion3_mes +
+  w[4]*accion4_mes +
+  w[5]*accion5_mes
+names(portfolio_retornos_mes_pie) <- "retornos"
+
+## Cálculo con PerformanceAnalytics (con rebalanceo mensual)
+portfolio_retornos_mes <- PerformanceAnalytics::Return.portfolio(R = retornos_mes,
+                                                                 weights = w,
+                                                                 rebalance_on = "months") %>%
+  `colnames<-`("retornos")
+
+diferencia_max <- max(abs(portfolio_retornos_mes_pie - portfolio_retornos_mes), na.rm = TRUE)
+cat("Diferencia máxima entre ambos métodos:", format(diferencia_max, scientific = TRUE), "\n")
+
+psych::describe(as.numeric(portfolio_retornos_mes))
+```
+
+**Respuesta:** los dos métodos coinciden casi exacto (diferencia del orden
+de `r format(diferencia_max, scientific = TRUE)`, error de punto flotante,
+no una discrepancia real). El portafolio combinado tiene un retorno mensual
+promedio de
+**`r label_percent(accuracy = 0.01)(mean(as.numeric(portfolio_retornos_mes)))`**
+y una desviación estándar de
+**`r label_percent(accuracy = 0.01)(sd(as.numeric(portfolio_retornos_mes)))`** —
+comparado con los activos individuales de la Parte 4, la combinación
+diversificada reduce la volatilidad frente a los componentes más riesgosos
+del grupo, sin sacrificar todo el retorno esperado.
