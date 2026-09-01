@@ -202,10 +202,59 @@ dibujar(retornos_mes_long %>%
 dibujar(retornos_mes_long %>%
     ggplot(mapping = aes(y = retorno, x = date, color = activo)) +
     geom_line(alpha = 1, linewidth = 0.6) +
-    labs(title = "Retornos mensuales por activo", x = "Mes", y = "Retorno") +
+    labs(title = "Retornos mensuales por accion", x = "Mes", y = "Retorno") +
     theme_light() +
     scale_y_continuous(labels = label_percent(0.01)) +
     theme(panel.grid = element_blank()))
+```
+
+## Versión interactiva (highcharter)
+
+**Qué hace**: los mismos retornos mensuales y semanales, pero en un gráfico
+interactivo (zoom, panorámica, exportar) en vez de una imagen estática —
+útil para explorar un periodo específico de cerca (por ejemplo, la caída de
+2020 o de 2022) sin tener que regenerar el gráfico.
+
+```{r highchart-mensual}
+highcharter::highchart(type = "stock") %>%
+  hc_title(text = "Retornos mensuales") %>%
+  hc_add_series(data = retornos_mes[, symbols[1]]*100, name = symbols[1]) %>%
+  hc_add_series(data = retornos_mes[, symbols[2]]*100, name = symbols[2]) %>%
+  hc_add_series(data = retornos_mes[, symbols[3]]*100, name = symbols[3]) %>%
+  hc_add_series(data = retornos_mes[, symbols[4]]*100, name = symbols[4]) %>%
+  hc_add_series(data = retornos_mes[, symbols[5]]*100, name = symbols[5]) %>%
+  hc_legend(enabled = T) %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(labels = list(format = "{value:.1f}%")) %>%
+  hc_exporting(enabled = T) %>%
+  hc_navigator(height = 10)
+```
+
+```{r highchart-semanal}
+highcharter::highchart(type = "stock") %>%
+  hc_title(text = "Retornos semanales") %>%
+  hc_add_series(data = retornos_semana[, symbols[1]]*100, name = symbols[1]) %>%
+  hc_add_series(data = retornos_semana[, symbols[2]]*100, name = symbols[2]) %>%
+  hc_add_series(data = retornos_semana[, symbols[3]]*100, name = symbols[3]) %>%
+  hc_add_series(data = retornos_semana[, symbols[4]]*100, name = symbols[4]) %>%
+  hc_add_series(data = retornos_semana[, symbols[5]]*100, name = symbols[5]) %>%
+  hc_legend(enabled = T) %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(labels = list(format = "{value:.1f}%")) %>%
+  hc_exporting(enabled = T) %>%
+  hc_navigator(height = 10)
+```
+
+```{r highchart-histograma}
+hc_hist_data <- hist(retornos_mes[,symbols[1]]*100, plot = FALSE)
+
+hchart(hc_hist_data, color = "cornflowerblue") %>%
+  hc_title(text = paste(symbols[1], "— Distribución de los retornos")) %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_xAxis(labels = list(format = "{value:.1f}%")) %>%
+  hc_exporting(enabled = T) %>%
+  hc_legend(enabled = F) %>%
+  hc_navigator(height = 10)
 ```
 
 ------------------------------------------------------------------------
@@ -264,3 +313,18 @@ y una desviación estándar de
 comparado con los activos individuales de la Parte 4, la combinación
 diversificada reduce la volatilidad frente a los componentes más riesgosos
 del grupo, sin sacrificar todo el retorno esperado.
+
+## Versión interactiva del retorno del portafolio
+
+```{r highchart-portafolio}
+highcharter::highchart(type = "stock") %>%
+  hc_title(text = "Retornos mensuales del portafolio") %>%
+  hc_add_series(portfolio_retornos_mes$retornos*100,
+                name = "Retornos rebalanceados mensualmente",
+                color = "cornflowerblue") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(labels = list(format = "{value:.1f}%")) %>%
+  hc_legend(enabled = T) %>%
+  hc_exporting(enabled = T) %>%
+  hc_navigator(height = 10)
+```
