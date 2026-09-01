@@ -1,0 +1,315 @@
+---
+title: "Actividad en clase — Retornos y portafolios manuales"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Configuración inicial
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, EnvStats, ggpubr, psych, quantmod, TTR,
+               purrr, PerformanceAnalytics, highcharter, timetk, readxl, scales, htmlwidgets)
+options(scipen = 999)
+
+dibujar <- function(p) {
+  grid::grid.newpage()
+  grid::grid.draw(ggplot2::ggplotGrob(p))
+}
+```
+
+------------------------------------------------------------------------
+
+# 1. Carga de precios y selección de 15 acciones
+
+> "Cargar la información de los precios en R y selecciona 15 acciones del
+> todo el universo."
+
+**Qué hace**: descarga los precios de cierre de las 40 compañías del
+enlace del taller, y selecciona 15 de ellas.
+
+**Por qué (teoría)**: se eligen deliberadamente de sectores distintos
+(tecnología, financiero, salud, consumo básico, industrial, energía) en vez
+de las 15 primeras de la lista — con 15 acciones del mismo sector el
+portafolio de la Parte 7 no diversificaría de verdad, se movería casi como
+un solo activo grande.
+
+```{r carga-precios}
+url_taller <- "https://raw.githubusercontent.com/salas317/Data/main/TOSF/datos_taller_retornos.csv"
+
+precios_todos <- read_csv(url_taller,
+                          col_types = cols(date = col_date(format = "%m/%d/%Y"))) %>%
+  timetk::tk_xts(date_var = date)
+
+cat("Universo disponible:", ncol(precios_todos), "acciones,", nrow(precios_todos),
+    "días, de", format(zoo::index(precios_todos)[1]), "a",
+    format(zoo::index(precios_todos)[nrow(precios_todos)]), "\n")
+
+acciones_15 <- c("AAPL", "MSFT", "NVDA", "GOOGL",   # Tecnología
+                  "JPM", "V", "GS",                  # Financiero
+                  "LLY", "JNJ", "UNH",                # Salud
+                  "WMT", "KO", "PG",                  # Consumo básico
+                  "CAT",                               # Industrial
+                  "CVX")                               # Energía
+
+precios <- precios_todos[, acciones_15]
+head(precios, 3)
+```
+
+------------------------------------------------------------------------
+
+# 2. Cálculo de los retornos a distintas frecuencias
+
+> "Calcular los retornos. a. Diarios b. Semanales c. Mensuales
+> d. Trimestrales e. Anuales. Interpreta el resultado de la última
+> observación de cada frecuencia para una de las acciones."
+
+**Qué hace**: cambia la frecuencia del precio con `to.weekly()`/
+`to.monthly()`/`to.quarterly()`/`to.yearly()`, y calcula el retorno continuo
+—$\ln(P_t/P_{t-1})$— a cada una.
+
+**Por qué (teoría)**: el retorno diario captura solo el último día de
+negociación; el semanal, todo lo que pasó esa semana; y así hasta el
+anual, que acumula el año calendario completo. Ninguno es "más correcto"
+que otro — la frecuencia adecuada depende del horizonte de la decisión que
+se esté analizando.
+
+```{r frecuencias-retornos}
+# NOTA: diff(log(x)) en vez de TTR::ROC(type="continuous") - con esta misma
+# combinacion de librerias (highcharter + PerformanceAnalytics + EnvStats +
+# ggpubr + psych + tidyverse todas cargadas juntas), TTR::ROC() sobre un
+# objeto de to.weekly()/to.monthly()/etc. crashea R sin ningun mensaje de
+# error (ver CLAUDE.md). diff(log(x)) da el mismo resultado matematico y no
+# tiene ese problema.
+
+precios_semana <- xts::to.weekly(precios, OHLC = FALSE)
+precios_mes <- xts::to.monthly(precios, indexAt = "lastof", OHLC = FALSE)
+precios_trimestre <- xts::to.quarterly(precios, indexAt = "lastof", OHLC = FALSE)
+precios_anual <- xts::to.yearly(precios, OHLC = FALSE)
+
+retornos_diarios <- diff(log(precios)) %>% na.omit()
+retornos_semana <- diff(log(precios_semana)) %>% na.omit()
+retornos_mes <- diff(log(precios_mes)) %>% na.omit()
+retornos_trimestre <- diff(log(precios_trimestre)) %>% na.omit()
+retornos_anual <- diff(log(precios_anual)) %>% na.omit()
+
+ultimo_diario <- as.numeric(tail(retornos_diarios$AAPL, 1))
+ultimo_semanal <- as.numeric(tail(retornos_semana$AAPL, 1))
+ultimo_mensual <- as.numeric(tail(retornos_mes$AAPL, 1))
+ultimo_trimestral <- as.numeric(tail(retornos_trimestre$AAPL, 1))
+ultimo_anual <- as.numeric(tail(retornos_anual$AAPL, 1))
+
+data.frame(
+  frecuencia = c("Diario", "Semanal", "Mensual", "Trimestral", "Anual"),
+  fecha = c(format(zoo::index(tail(retornos_diarios,1))), format(zoo::index(tail(retornos_semana,1))),
+            format(zoo::index(tail(retornos_mes,1))), format(zoo::index(tail(retornos_trimestre,1))),
+            format(zoo::index(tail(retornos_anual,1)))),
+  retorno_AAPL = label_percent(accuracy = 0.01)(c(ultimo_diario, ultimo_semanal, ultimo_mensual,
+                                                    ultimo_trimestral, ultimo_anual))
+)
+```
+
+**Respuesta:** para AAPL, el último retorno diario es
+**`r label_percent(accuracy=0.01)(ultimo_diario)`** (solo el último día de
+negociación disponible). El semanal
+(**`r label_percent(accuracy=0.01)(ultimo_semanal)`**) y el mensual
+(**`r label_percent(accuracy=0.01)(ultimo_mensual)`**) son parecidos entre
+sí porque ambos capturan un tramo corto y reciente. El trimestral
+(**`r label_percent(accuracy=0.01)(ultimo_trimestral)`**) y sobre todo el
+anual (**`r label_percent(accuracy=0.01)(ultimo_anual)`**) son
+notablemente más altos — no porque AAPL haya tenido un desempeño
+excepcional al final, sino porque **acumulan mucho más tiempo**: el
+retorno anual compone 12 meses de crecimiento, el diario solo capta uno.
+
+------------------------------------------------------------------------
+
+# 3. Histograma de los retornos semanales de una acción
+
+> "Realiza un histograma de los retornos semanales de una de las
+> acciones."
+
+```{r hist-semanal}
+dibujar(ggplot(data.frame(retorno = as.numeric(retornos_semana$NVDA)), aes(x = retorno)) +
+  geom_histogram(bins = 40, fill = "steelblue3", color = "black") +
+  labs(title = "NVDA — Histograma de retornos semanales", x = "Retorno", y = "Frecuencia") +
+  scale_x_continuous(labels = label_percent(0.1)) +
+  theme_light())
+```
+
+**Respuesta:** se eligió **NVDA** — se ve una distribución con cola
+derecha más larga que la izquierda (varias semanas con subidas grandes,
+consistente con su rally reciente en IA), y una dispersión visiblemente
+mayor que la de acciones más defensivas del grupo (KO, PG, JNJ).
+
+------------------------------------------------------------------------
+
+# 4. Histograma de los retornos mensuales de otra acción
+
+> "Realiza un histograma de los retornos mensuales de una de las acciones
+> (diferente de la del punto anterior)."
+
+```{r hist-mensual}
+dibujar(ggplot(data.frame(retorno = as.numeric(retornos_mes$JPM)), aes(x = retorno)) +
+  geom_histogram(bins = 25, fill = "darkorange3", color = "black") +
+  labs(title = "JPM — Histograma de retornos mensuales", x = "Retorno", y = "Frecuencia") +
+  scale_x_continuous(labels = label_percent(0.1)) +
+  theme_light())
+```
+
+**Respuesta:** se eligió **JPM** (distinta de NVDA) — la distribución
+mensual es más compacta y simétrica que el semanal de NVDA, con menos
+observaciones extremas, coherente con ser un banco grande y establecido en
+vez de una acción de crecimiento tecnológico.
+
+------------------------------------------------------------------------
+
+# 5. Densidad de los retornos mensuales de 4 acciones
+
+> "Selecciona 4 acciones y realiza un gráfico de densidad de los retornos
+> mensuales."
+
+```{r densidad}
+acciones_densidad <- c("NVDA", "JPM", "LLY", "WMT")
+
+retornos_densidad_long <- retornos_mes[, acciones_densidad] %>%
+  tk_tbl(rename_index = "date") %>%
+  gather(key = activo, value = retorno, -date, factor_key = TRUE)
+
+dibujar(ggplot(retornos_densidad_long, aes(x = retorno, color = activo)) +
+  geom_density(linewidth = 0.8) +
+  labs(title = "Densidad de retornos mensuales", x = "Retorno", y = "Densidad", color = NULL) +
+  scale_x_continuous(labels = label_percent(0.1)) +
+  theme_light())
+```
+
+**Respuesta:** **NVDA** (tecnología) muestra la densidad más ancha y
+achatada — mayor dispersión de resultados posibles. **WMT** y **LLY**
+(consumo básico y salud, ambos defensivos) muestran las densidades más
+altas y angostas — resultados mensuales mucho más predecibles. **JPM**
+queda en un punto intermedio, consistente con ser cíclico pero no tan
+volátil como una acción de crecimiento puro.
+
+------------------------------------------------------------------------
+
+# 6. Gráfico dinámico de retornos semanales de 5 acciones
+
+> "Realiza un gráfico dinámico que muestre la evolución de los retornos
+> semanales de 5 acciones."
+
+**Qué hace**: un gráfico interactivo (zoom, panorámica, exportar) en vez de
+una imagen estática — útil para explorar de cerca un periodo específico
+(por ejemplo, la caída de marzo de 2020 o de 2022).
+
+```{r highchart-dinamico}
+acciones_dinamico <- c("AAPL", "MSFT", "NVDA", "JPM", "CVX")
+
+highcharter::highchart(type = "stock") %>%
+  hc_title(text = "Retornos semanales") %>%
+  hc_add_series(data = retornos_semana[, acciones_dinamico[1]]*100, name = acciones_dinamico[1]) %>%
+  hc_add_series(data = retornos_semana[, acciones_dinamico[2]]*100, name = acciones_dinamico[2]) %>%
+  hc_add_series(data = retornos_semana[, acciones_dinamico[3]]*100, name = acciones_dinamico[3]) %>%
+  hc_add_series(data = retornos_semana[, acciones_dinamico[4]]*100, name = acciones_dinamico[4]) %>%
+  hc_add_series(data = retornos_semana[, acciones_dinamico[5]]*100, name = acciones_dinamico[5]) %>%
+  hc_legend(enabled = TRUE) %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(labels = list(format = "{value:.1f}%")) %>%
+  hc_exporting(enabled = TRUE) %>%
+  hc_navigator(height = 10)
+```
+
+------------------------------------------------------------------------
+
+# 7. Portafolio con proporciones diferentes
+
+> "Construya un portafolio a partir de los 15 activos que tiene disponibles
+> (las proporciones deben ser diferentes). Emplee los retornos mensuales."
+
+**Qué hace**: asigna un peso distinto a cada una de las 15 acciones.
+
+**Por qué (teoría)**: en vez de pesos iguales (1/15 cada una) o arbitrarios,
+se usa una ponderación de **convicción decreciente** — más peso a las
+primeras del listado (tecnología de gran capitalización, más líquidas y
+con más historia de crecimiento) y menos a las últimas — una forma simple
+y transparente de garantizar 15 pesos genuinamente distintos que además
+suman exactamente 100%.
+
+```{r pesos-portafolio}
+w <- rev(seq_along(acciones_15)) / sum(seq_along(acciones_15))
+names(w) <- acciones_15
+
+data.frame(accion = acciones_15, peso = label_percent(accuracy = 0.01)(w))
+```
+
+```{r portafolio-mensual}
+portafolio_mensual <- PerformanceAnalytics::Return.portfolio(R = retornos_mes,
+                                                              weights = w,
+                                                              rebalance_on = "months") %>%
+  `colnames<-`("retornos")
+
+cat("Portafolio (rebalanceo mensual): retorno mensual promedio =",
+    label_percent(accuracy = 0.01)(mean(as.numeric(portafolio_mensual))),
+    ", desviación estándar =",
+    label_percent(accuracy = 0.01)(sd(as.numeric(portafolio_mensual))), "\n")
+```
+
+------------------------------------------------------------------------
+
+# 8. Rebalanceo mensual vs. anual
+
+> "Calcule los retornos del portafolio con rebalanceos mensuales y otro con
+> rebalanceos anuales."
+
+**Por qué (teoría)**: rebalancear significa volver a los pesos objetivo
+periódicamente — sin rebalanceo, los pesos reales se van corriendo solos
+(la acción que más sube termina pesando más de lo previsto). Rebalancear
+seguido (mensual) mantiene el portafolio siempre cerca de su composición
+original; rebalancear poco (anual) deja correr más tiempo a los ganadores
+antes de recortarlos.
+
+```{r portafolio-anual}
+portafolio_anual <- PerformanceAnalytics::Return.portfolio(R = retornos_mes,
+                                                            weights = w,
+                                                            rebalance_on = "years") %>%
+  `colnames<-`("retornos")
+
+tabla_comparacion <- data.frame(
+  rebalanceo = c("Mensual", "Anual"),
+  retorno_promedio = label_percent(accuracy = 0.01)(c(mean(as.numeric(portafolio_mensual)),
+                                                         mean(as.numeric(portafolio_anual)))),
+  desv_estandar = label_percent(accuracy = 0.01)(c(sd(as.numeric(portafolio_mensual)),
+                                                     sd(as.numeric(portafolio_anual))))
+)
+tabla_comparacion
+```
+
+------------------------------------------------------------------------
+
+# 9. Comparación gráfica de las dos series
+
+> "Grafique las dos series de retornos y compare."
+
+```{r comparacion-grafica}
+comparacion_long <- bind_rows(
+  data.frame(date = zoo::index(portafolio_mensual), retorno = as.numeric(portafolio_mensual), rebalanceo = "Mensual"),
+  data.frame(date = zoo::index(portafolio_anual), retorno = as.numeric(portafolio_anual), rebalanceo = "Anual")
+)
+
+dibujar(ggplot(comparacion_long, aes(x = date, y = retorno, color = rebalanceo)) +
+  geom_line(linewidth = 0.6) +
+  labs(title = "Retornos del portafolio — rebalanceo mensual vs. anual",
+       x = "Fecha", y = "Retorno mensual", color = NULL) +
+  scale_y_continuous(labels = label_percent(0.1)) +
+  theme_light())
+```
+
+**Respuesta:** las dos series se mueven prácticamente juntas — con solo 15
+activos y un año calendario relativamente corto entre rebalanceos, la
+diferencia entre rebalancear mensual o anualmente es pequeña
+(`r label_percent(accuracy=0.01)(mean(as.numeric(portafolio_anual)) - mean(as.numeric(portafolio_mensual)))`
+de diferencia en el retorno promedio, y una desviación estándar casi
+idéntica). La diferencia se nota más en periodos largos con activos de
+volatilidad muy distinta entre sí — acá, con la mezcla de convicción
+decreciente elegida, ninguna acción individual llega a dominar tanto el
+portafolio como para que la frecuencia de rebalanceo cambie el resultado
+de forma dramática.
