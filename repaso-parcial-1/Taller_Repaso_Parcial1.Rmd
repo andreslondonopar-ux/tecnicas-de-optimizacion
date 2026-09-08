@@ -1,0 +1,602 @@
+---
+title: "Taller repaso 1er Parcial — Técnicas de Optimización y Simulación en Finanzas"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Configuración inicial
+
+**Qué hace**: carga las librerías necesarias para las tres partes del taller
+(simulación Monte Carlo, descarga de precios reales, portafolios, gráficos).
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, EnvStats, ggpubr, psych, quantmod, TTR,
+               purrr, PerformanceAnalytics, timetk, readxl, scales)
+options(scipen = 999)
+```
+
+**Por qué (teoría)**: `EnvStats` trae `rtri()` (la distribución triangular
+que pide la Parte 1), `PerformanceAnalytics` calcula retornos de portafolio
+con rebalanceo, y `quantmod` descarga precios reales de Yahoo Finance para
+la Parte 2.
+
+```{r dibujar-fn}
+# NOTA: EnvStats cargado junto con tidyverse/ggplot2 rompe la dispatch de
+# print() sobre objetos ggplot (ggplot2 4.x usa el sistema S7; ver
+# CLAUDE.md del proyecto) — se dibuja el grob directamente en vez de
+# depender de print()/de que el chunk auto-imprima.
+dibujar <- function(p) {
+  grid::grid.newpage()
+  grid::grid.draw(ggplot2::ggplotGrob(p))
+}
+```
+
+------------------------------------------------------------------------
+
+# Parte 1 — Selección de una inversión
+
+> "Se te ha asignado la tarea de invertir un capital de USD\$20,000 en un
+> activo de renta variable a un periodo de un año. Después de explorar y
+> filtrar diferentes opciones, estás considerando 3 posibilidades:
+>
+> a. Una inversión que genera retornos anuales y que se espera sigan una
+>    distribución normal con una media de 6.5 % y una desviación estándar
+>    de 14 %.
+> b. Un activo con retornos mensuales, los cuales siguen una distribución
+>    triangular con un mínimo de -8.5 %, un máximo de 6.5 % y una moda de
+>    0.56 %.
+> c. Un activo con retornos trimestrales, estos siguen una distribución
+>    normal con una media de 1.6 % y una desviación estándar de 7 %."
+
+## Simulación de las 3 inversiones (10,001 iteraciones)
+
+**Qué hace**: simula el capital final a 1 año para cada inversión.
+(a) es de un solo periodo (ya es anual, un solo `rnorm()` por escenario);
+(b) y (c) necesitan **componer varios periodos dentro del mismo año**
+(12 meses y 4 trimestres respectivamente) — se genera una matriz de
+retornos aleatorios (filas = escenarios, columnas = periodos) y se
+capitaliza cada fila con producto acumulado (`cumprod`), guardando la
+trayectoria completa (no solo el capital final) porque la Pregunta 3 pide
+graficar la evolución periodo a periodo de la inversión elegida.
+
+**Por qué (teoría)**: capitalizar $n$ retornos periódicos compuestos
+equivale a $C_T = C_0 \prod_{t=1}^{n}(1+r_t)$ — el mismo principio de
+interés compuesto que enlaza distintas frecuencias de retorno (diario,
+semanal, mensual…), visto ya en la unidad de Portafolio.
+
+```{r parte1-simulacion}
+capital_inicial_1 <- 20000
+n_sim_1 <- 10001
+semilla_1 <- 2026
+
+## a. Normal anual: media 6.5%, sd 14% (1 solo periodo)
+set.seed(semilla_1)
+retorno_a <- rnorm(n_sim_1, mean = 0.065, sd = 0.14)
+capital_a <- capital_inicial_1 * (1 + retorno_a)
+
+## b. Triangular mensual: min -8.5%, max 6.5%, moda 0.56% (12 meses compuestos)
+set.seed(semilla_1)
+retorno_b <- matrix(EnvStats::rtri(n_sim_1 * 12, min = -0.085, max = 0.065, mode = 0.0056),
+                     nrow = n_sim_1, ncol = 12)
+capital_b_trayectoria <- capital_inicial_1 * t(apply(1 + retorno_b, 1, cumprod))
+capital_b <- capital_b_trayectoria[, 12]
+
+## c. Normal trimestral: media 1.6%, sd 7% (4 trimestres compuestos)
+set.seed(semilla_1)
+retorno_c <- matrix(rnorm(n_sim_1 * 4, mean = 0.016, sd = 0.07), nrow = n_sim_1, ncol = 4)
+capital_c_trayectoria <- capital_inicial_1 * t(apply(1 + retorno_c, 1, cumprod))
+capital_c <- capital_c_trayectoria[, 4]
+
+medidas_inversion <- function(capital_final, capital_inicial, alpha_var = 0.01) {
+  VaR_q <- quantile(capital_final, probs = alpha_var)
+  ic95 <- quantile(capital_final, probs = c(0.025, 0.975))
+  data.frame(
+    capital_promedio = mean(capital_final),
+    capital_maximo = max(capital_final),
+    ganancia_maxima = max(capital_final) - capital_inicial,
+    capital_minimo = min(capital_final),
+    perdida_maxima = capital_inicial - min(capital_final),
+    mediana = median(capital_final),
+    ic95_inf = ic95[1],
+    ic95_sup = ic95[2],
+    VaR_99 = capital_inicial - VaR_q,
+    ES_99 = capital_inicial - mean(capital_final[capital_final < VaR_q])
+  )
+}
+
+tabla_inversiones <- bind_rows(
+  cbind(inversion = "a. Normal anual", medidas_inversion(capital_a, capital_inicial_1)),
+  cbind(inversion = "b. Triangular mensual", medidas_inversion(capital_b, capital_inicial_1)),
+  cbind(inversion = "c. Normal trimestral", medidas_inversion(capital_c, capital_inicial_1))
+)
+tabla_inversiones %>% mutate(across(where(is.numeric), ~ round(.x, 2)))
+```
+
+## Pregunta 1 — Las 7 medidas por inversión
+
+> "1. Para cada una de estas inversiones deberá de calcular las siguientes
+> medidas, usando una simulación de 10,001 iteraciones en cada uno de los
+> casos.
+>
+> 1. Capital promedio al final del año.
+> 2. Capital máximo al final de la inversión y cuanta ganancia genero.
+> 3. Capital mínimo al final de la inversión y cuanta perdida genero.
+> 4. La mediana del capital al final del año.
+> 5. Intervalo del 95 % de los capitales alrededor del capital final
+>    promedio.
+> 6. El valor en riesgo con una confianza del 99 %.
+> 7. La pérdida esperada con una confianza del 99 %.
+>
+> Para una de las inversiones, debe de interpretar cada una de las
+> medidas."
+
+**Respuesta:** la tabla de arriba (`tabla_inversiones`) tiene una fila por
+inversión con las 7 medidas: capital promedio, capital máximo y su
+ganancia, capital mínimo y su pérdida, mediana, intervalo del 95 % (percentil
+2.5 %–97.5 % del capital simulado), VaR al 99 % y ES al 99 % (los dos
+últimos expresados como pérdida en dólares respecto al capital inicial).
+
+### Interpretación de las 7 medidas — inversión (a) Normal anual
+
+```{r parte1-interpretacion}
+m_a <- medidas_inversion(capital_a, capital_inicial_1)
+```
+
+**1. Capital promedio al final del año**: `r label_dollar()(m_a$capital_promedio)`
+— en promedio, sobre las `r n_sim_1` trayectorias simuladas, los $20,000
+invertidos terminan valiendo `r label_dollar()(m_a$capital_promedio)` (una
+ganancia esperada de `r label_dollar()(m_a$capital_promedio - capital_inicial_1)`).
+
+**2. Capital máximo**: `r label_dollar()(m_a$capital_maximo)` — el mejor de
+los `r n_sim_1` escenarios simulados, con una ganancia de
+`r label_dollar()(m_a$ganancia_maxima)` sobre el capital inicial.
+
+**3. Capital mínimo**: `r label_dollar()(m_a$capital_minimo)` — el peor de
+los `r n_sim_1` escenarios, con una pérdida de `r label_dollar()(m_a$perdida_maxima)`.
+El capital nunca se vuelve negativo porque esta inversión es de un solo
+periodo (un retorno anual negativo, por muy malo que sea, deja algo de
+capital mientras no sea peor que -100 %).
+
+**4. Mediana**: `r label_dollar()(m_a$mediana)` — el valor que divide en
+dos mitades iguales los `r n_sim_1` resultados simulados. Queda muy cerca
+del promedio (`r label_dollar()(m_a$capital_promedio)`) porque el retorno
+subyacente es **normal**, una distribución simétrica.
+
+**5. Intervalo del 95 %**: `r label_dollar()(m_a$ic95_inf)` a
+`r label_dollar()(m_a$ic95_sup)` — el 95 % de los capitales finales
+simulados cae dentro de ese rango; solo el 2.5 % de las peores corridas
+termina por debajo de `r label_dollar()(m_a$ic95_inf)`, y el 2.5 % de las
+mejores por encima de `r label_dollar()(m_a$ic95_sup)`.
+
+**6. VaR al 99 %**: la pérdida máxima de la inversión, con un 99 % de
+confianza en el año, es de USD `r label_dollar()(m_a$VaR_99)`. Hay una
+probabilidad del 1 % de que las pérdidas de la inversión sean mayores a
+USD `r label_dollar()(m_a$VaR_99)`.
+
+**7. ES al 99 %**: la pérdida esperada al 99 % en el año es de USD
+`r label_dollar()(m_a$ES_99)` — es decir, si el escenario cae dentro de
+ese peor 1 % de los casos, la pérdida **promedio** ahí es de
+`r label_dollar()(m_a$ES_99)`, mayor que el VaR porque promedia toda la
+cola de pérdidas, no solo su borde.
+
+## Pregunta 2 — Decisión de inversión
+
+> "2. Una vez calculadas las medidas, debe de definir en cuál de las
+> opciones invertirá su capital. Esto considerando como criterio de
+> decisión el valor de la perdida esperada en un contexto de aversión al
+> riesgo. Justifique su decisión"
+
+```{r parte1-decision}
+inversion_elegida <- tabla_inversiones$inversion[which.min(tabla_inversiones$ES_99)]
+tabla_inversiones %>% select(inversion, capital_promedio, ES_99) %>%
+  mutate(across(where(is.numeric), ~round(.x, 2)))
+```
+
+**Respuesta:** se elige la inversión **`r inversion_elegida`**. Su ES al
+99 % es `r label_dollar()(min(tabla_inversiones$ES_99))` — el más bajo de
+las 3 (vs. `r label_dollar()(tabla_inversiones$ES_99[1])` de la Normal anual
+y `r label_dollar()(tabla_inversiones$ES_99[2])` de la Triangular mensual).
+En un contexto de aversión al riesgo, donde el criterio de decisión es la
+pérdida esperada en el peor escenario (no solo el retorno promedio), esta
+es la opción más defendible: además de tener la **menor** pérdida esperada
+en el 1 % de peores casos, también tiene el **mayor** capital promedio
+esperado (`r label_dollar()(max(tabla_inversiones$capital_promedio))`) de
+las 3 — no hay ningún trade-off que resolver, domina en las dos
+dimensiones a la vez.
+
+## Pregunta 3 — Gráfico de la iteración máxima, mínima y mediana
+
+> "3. Finalmente, para la inversión que ha decidido es la mejor opción,
+> realice un gráfico donde se muestre la iteración que generó el máximo
+> capital, la que generó el mínimo capital y la que generó el capital
+> considerado la mediana de los resultados de las iteraciones."
+
+**Qué hace**: identifica, dentro de las `r n_sim_1` simulaciones de la
+inversión elegida, cuál escenario terminó con el capital máximo, cuál con
+el mínimo, y cuál quedó más cerca de la mediana — y grafica la trayectoria
+**completa** (trimestre a trimestre, no solo el resultado final) de esas
+tres iteraciones puntuales.
+
+```{r parte1-grafico}
+idx_max_c <- which.max(capital_c)
+idx_min_c <- which.min(capital_c)
+idx_mediana_c <- which.min(abs(capital_c - median(capital_c)))
+
+trayectorias_c <- bind_rows(
+  data.frame(trimestre = 0:4, capital = c(capital_inicial_1, capital_c_trayectoria[idx_max_c, ]), iteracion = "Máxima"),
+  data.frame(trimestre = 0:4, capital = c(capital_inicial_1, capital_c_trayectoria[idx_min_c, ]), iteracion = "Mínima"),
+  data.frame(trimestre = 0:4, capital = c(capital_inicial_1, capital_c_trayectoria[idx_mediana_c, ]), iteracion = "Mediana")
+)
+
+dibujar(ggplot(trayectorias_c, aes(x = trimestre, y = capital, color = iteracion)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2) +
+  theme_light() +
+  labs(title = "Inversión c. Normal trimestral — trayectorias máxima, mínima y mediana",
+       x = "Trimestre", y = "Capital (USD)", color = "Iteración") +
+  scale_y_continuous(labels = label_dollar()) +
+  scale_x_continuous(breaks = 0:4))
+```
+
+**Respuesta:** el gráfico de arriba muestra, trimestre a trimestre (0 a
+4), la trayectoria de la iteración `r idx_max_c` (capital final máximo,
+`r label_dollar()(capital_c[idx_max_c])`), la iteración `r idx_min_c`
+(capital final mínimo, `r label_dollar()(capital_c[idx_min_c])`) y la
+iteración `r idx_mediana_c` (capital más cercano a la mediana,
+`r label_dollar()(capital_c[idx_mediana_c])`), todas partiendo de los
+$20,000 iniciales en el trimestre 0.
+
+------------------------------------------------------------------------
+
+# Parte 2 — Retornos y distribuciones
+
+> "Empleando estas acciones [AVGO, LLY, WMT, V, MA, COST, MRK, PM, TXN,
+> PEP, DIS, SBUX], descargue los precios para el periodo: 31/12/2022 -
+> 31/08/2026. A partir de esta información, calcule los retornos
+> semanales de cada una de las acciones."
+
+## Descarga de precios y retornos semanales
+
+**Qué hace**: descarga el precio de cierre ajustado de las 12 acciones
+vía `quantmod::getSymbols()`, convierte a frecuencia semanal
+(`xts::to.weekly()`) y calcula el retorno logarítmico semanal.
+
+**Por qué (teoría)**: se usa `diff(log(x))` en vez de `TTR::ROC()` —
+con la misma combinación de librerías de este taller (`tidyverse` +
+`EnvStats` + `PerformanceAnalytics` + `quantmod`/`TTR`), `TTR::ROC()`
+sobre un objeto de `to.weekly()` puede crashear R sin ningún mensaje de
+error (bug ya documentado en el `CLAUDE.md` del proyecto, reproducido con
+datos sintéticos). `diff(log(x))` calcula exactamente el mismo retorno
+continuo ($\ln(P_t/P_{t-1})$) sin ese problema.
+
+```{r parte2-datos}
+tickers_2 <- c("AVGO", "LLY", "WMT", "V", "MA", "COST", "MRK", "PM", "TXN", "PEP", "DIS", "SBUX")
+
+precios_2 <- quantmod::getSymbols(tickers_2, src = "yahoo",
+                                  from = "2022-12-31", to = "2026-08-31",
+                                  periodicity = "daily",
+                                  auto.assign = TRUE, warnings = FALSE) %>%
+  purrr::map(~quantmod::Ad(get(.))) %>%
+  purrr::reduce(merge.xts) %>%
+  `colnames<-`(tickers_2)
+
+precios_semana_2 <- xts::to.weekly(precios_2, OHLC = FALSE)
+retornos_semana_2 <- diff(log(precios_semana_2)) %>% na.omit()
+
+retornos_semana_2_long <- retornos_semana_2 %>% tk_tbl(rename_index = "date") %>%
+  gather(key = activo, value = retorno, -date, factor_key = TRUE)
+
+cat("Precios:", format(zoo::index(precios_2)[1]), "a",
+    format(zoo::index(precios_2)[nrow(precios_2)]), "-", nrow(precios_2), "días\n")
+cat("Retornos semanales:", nrow(retornos_semana_2), "semanas, de",
+    format(zoo::index(retornos_semana_2)[1]), "a",
+    format(zoo::index(retornos_semana_2)[nrow(retornos_semana_2)]))
+```
+
+## Pregunta 1 — Histograma agrupado, no superpuesto
+
+> "1. Realiza el histograma de los retornos semanales de todas las
+> acciones. Agrupado, pero no superpuesto."
+
+```{r parte2-histograma}
+dibujar(retornos_semana_2_long %>%
+  ggplot(aes(x = retorno, fill = activo)) +
+  geom_histogram(bins = 30, color = "black") +
+  facet_wrap(~activo, ncol = 4) +
+  theme_light() +
+  theme(legend.position = "none") +
+  labs(title = "Histograma de retornos semanales por acción (agrupado, no superpuesto)",
+       x = "Retorno semanal", y = "Frecuencia") +
+  scale_x_continuous(labels = label_percent(0.1)))
+```
+
+**Respuesta:** el gráfico de arriba usa `facet_wrap()` — un panel por
+acción, cada uno con su propio histograma — en vez de superponer varias
+acciones en el mismo eje (que sería `position = "identity"` con
+transparencia). "Agrupado" se cumple porque las 12 acciones comparten la
+misma cuadrícula de paneles y el mismo eje x, permitiendo compararlas
+lado a lado sin que sus barras se mezclen.
+
+## Pregunta 2 — Densidades
+
+> "2. Realiza el gráfico de las densidades de los retornos."
+
+```{r parte2-densidad}
+dibujar(retornos_semana_2_long %>%
+  ggplot(aes(x = retorno, color = activo)) +
+  geom_density(linewidth = 0.7) +
+  theme_light() +
+  labs(title = "Densidad de los retornos semanales por acción",
+       x = "Retorno semanal", y = "Densidad", color = NULL) +
+  scale_x_continuous(labels = label_percent(0.1)))
+```
+
+**Respuesta:** a diferencia del histograma agrupado, aquí las 12
+densidades sí se superponen en el mismo gráfico — es la forma natural de
+comparar dispersión y forma entre acciones sin que 12 paneles separados
+dificulten la comparación visual.
+
+## Pregunta 3 — Evolución de los retornos (gráfico de líneas)
+
+> "3. Realiza el gráfico de líneas que muestre la evolución de los
+> retornos de las acciones."
+
+```{r parte2-lineas}
+dibujar(retornos_semana_2_long %>%
+  ggplot(aes(x = date, y = retorno, color = activo)) +
+  geom_line(linewidth = 0.4, alpha = 0.8) +
+  theme_light() +
+  labs(title = "Evolución de los retornos semanales por acción",
+       x = "Fecha", y = "Retorno semanal", color = NULL) +
+  scale_y_continuous(labels = label_percent(0.1)))
+```
+
+**Respuesta:** el gráfico de líneas de arriba muestra la evolución semana
+a semana de los retornos de las 12 acciones sobre el mismo eje de tiempo
+(`r format(zoo::index(retornos_semana_2)[1])` a
+`r format(zoo::index(retornos_semana_2)[nrow(retornos_semana_2)])`) — útil
+para detectar episodios donde varias acciones se mueven juntas (semanas de
+volatilidad de mercado generalizada).
+
+## Pregunta 4 — Portafolio con rebalanceo anual
+
+> "4. Usando estas acciones, construye un portafolio con una composición
+> de tu elección. Calcula los retornos históricos, con rebalanceos
+> anuales, del portafolio."
+
+**Qué hace**: asigna pesos de **convicción decreciente** (mismo criterio
+ya usado en `Portafolio/taller/Taller_Portafolio.R`) — más peso a las
+acciones que encabezan la lista, menos a las últimas — y calcula el
+retorno histórico del portafolio con `PerformanceAnalytics::Return.portfolio()`,
+rebalanceando la composición a los pesos objetivo una vez al año.
+
+```{r parte2-portafolio}
+pesos_portafolio <- rev(seq_along(tickers_2)) / sum(seq_along(tickers_2))
+names(pesos_portafolio) <- tickers_2
+
+data.frame(accion = tickers_2, peso = label_percent(accuracy = 0.01)(pesos_portafolio))
+
+portafolio_2 <- PerformanceAnalytics::Return.portfolio(R = retornos_semana_2,
+                                                        weights = pesos_portafolio,
+                                                        rebalance_on = "years") %>%
+  `colnames<-`("retornos")
+
+retorno_acumulado_portafolio <- prod(1 + as.numeric(portafolio_2)) - 1
+```
+
+**Respuesta:** portafolio con pesos de convicción decreciente
+(`r label_percent(accuracy=0.1)(pesos_portafolio[1])` en AVGO hasta
+`r label_percent(accuracy=0.1)(pesos_portafolio[length(pesos_portafolio)])`
+en SBUX), rebalanceado cada año. Retorno semanal promedio =
+`r label_percent(accuracy = 0.01)(mean(as.numeric(portafolio_2)))`,
+desviación estándar semanal =
+`r label_percent(accuracy = 0.01)(sd(as.numeric(portafolio_2)))`, retorno
+acumulado total del periodo (`r nrow(portafolio_2)` semanas) =
+`r label_percent(accuracy = 0.01)(retorno_acumulado_portafolio)`.
+
+------------------------------------------------------------------------
+
+# Parte 3 — Evaluación de Proyectos
+
+> "Usted dispone de un capital de \$500 millones. Existe la posibilidad de
+> invertir en un proyecto que tiene una duración de 5 años, con flujos
+> evaluados semestralmente. La tasa de descuento es del 12 % EA. Existen
+> dos posibilidades para realizar la inversión:
+>
+> **Sector Agrotecnológico**: en este proyecto, los costos administrativos
+> están controlados, pero los ingresos dependen de la volatilidad del
+> precio internacional del grano.
+>
+> - Ingresos (t = 1...10): Siguen una distribución Lognormal, donde la
+>   media de los ingresos semestrales es 18.181 y la desviación estándar
+>   es 0.186.
+> - Costos (t = 1...10): Siguen una distribución Normal, con media de
+>   \$30M y desviación estándar de \$1M.
+>
+> **Sector Infraestructura**: en este proyecto, los ingresos están
+> asegurados por contratos estatales, pero los costos de materiales y
+> administración son altamente inciertos.
+>
+> - Ingresos (t = 1...10): Siguen una distribución Normal, con media de
+>   \$75M y desviación estándar de \$1.5M.
+> - Costos (t = 1...10): Siguen una distribución Lognormal, donde la media
+>   de la normal asociada de los costos semestrales es 17.014 y la
+>   desviación estándar de la normal asociada es 0.456."
+
+## Simulación del VPN (100,000 iteraciones)
+
+**Nota de supuesto**: el enunciado dice explícitamente "media de la
+**normal asociada**" para los costos de Infraestructura (es decir,
+17.014 y 0.456 son los parámetros `meanlog`/`sdlog` de la lognormal, no
+la media/sd en dólares) pero no lo repite para el ingreso de
+Agrotecnológico. Se asume la misma convención en ambos casos, porque la
+magnitud de los números lo deja claro: una lognormal con
+`meanlog = 18.181, sdlog = 0.186` tiene una media real de
+$e^{18.181+0.186^2/2}\approx\$80$M por semestre — del mismo orden que el
+ingreso de \$75M/semestre de Infraestructura. Leer 18.181 como la media
+en dólares **directa** haría que el ingreso de Agrotecnológico fuera de
+apenas \$18.18, absurdo frente a un costo de \$30M/semestre. Los
+resultados de `rlnorm()` se dividen entre `1e6` para expresarlos en
+millones de dólares, la misma unidad que el resto del ejercicio.
+
+**Qué hace**: simula, para cada proyecto, el flujo de caja neto
+(ingresos − costos) en cada uno de los 10 semestres, lo descuenta a valor
+presente a la tasa **semestral** equivalente al 12 % EA
+($ (1.12)^{0.5}-1 $), y resta la inversión inicial de \$500M para obtener
+el VPN de cada una de las 100,000 iteraciones.
+
+```{r parte3-simulacion}
+inv_inicial_3 <- 500          # millones de USD
+tasa_ea_3 <- 0.12
+r_semestral_3 <- (1 + tasa_ea_3)^0.5 - 1
+n_sim_3 <- 100000
+n_sem_3 <- 10
+factor_descuento_3 <- (1 + r_semestral_3)^(1:n_sem_3)
+
+set.seed(2026)
+ingresos_agro <- matrix(rlnorm(n_sim_3 * n_sem_3, meanlog = 18.181, sdlog = 0.186),
+                        nrow = n_sim_3, ncol = n_sem_3) / 1e6
+costos_agro <- matrix(rnorm(n_sim_3 * n_sem_3, mean = 30, sd = 1), nrow = n_sim_3, ncol = n_sem_3)
+flujo_agro <- ingresos_agro - costos_agro
+vpn_agro <- -inv_inicial_3 + rowSums(sweep(flujo_agro, 2, factor_descuento_3, "/"))
+
+# misma semilla para que ambos proyectos usen el mismo stream de numeros
+# aleatorios - comparacion mas limpia entre los dos escenarios
+set.seed(2026)
+ingresos_infra <- matrix(rnorm(n_sim_3 * n_sem_3, mean = 75, sd = 1.5), nrow = n_sim_3, ncol = n_sem_3)
+costos_infra <- matrix(rlnorm(n_sim_3 * n_sem_3, meanlog = 17.014, sdlog = 0.456),
+                       nrow = n_sim_3, ncol = n_sem_3) / 1e6
+flujo_infra <- ingresos_infra - costos_infra
+vpn_infra <- -inv_inicial_3 + rowSums(sweep(flujo_infra, 2, factor_descuento_3, "/"))
+
+resumen_vpn <- function(vpn, alpha = 0.05) {
+  VaR_q <- quantile(vpn, alpha)
+  data.frame(
+    vpn_promedio = mean(vpn),
+    vpn_sd = sd(vpn),
+    vpn_mediana = median(vpn),
+    vpn_min = min(vpn),
+    vpn_max = max(vpn),
+    prob_vpn_negativo_pct = mean(vpn < 0) * 100,
+    VaR_5 = VaR_q,
+    ES_5 = mean(vpn[vpn < VaR_q])
+  )
+}
+
+tabla_vpn <- bind_rows(
+  cbind(proyecto = "Agrotecnológico", resumen_vpn(vpn_agro)),
+  cbind(proyecto = "Infraestructura", resumen_vpn(vpn_infra))
+)
+tabla_vpn %>% mutate(across(where(is.numeric), ~round(.x, 2)))
+```
+
+## Pregunta 1 — Histograma de las distribuciones del VPN
+
+> "1. Realice y analice el histograma de las distribuciones de los VPN
+> para ambas inversiones."
+
+```{r parte3-histograma}
+vpn_long <- bind_rows(
+  data.frame(vpn = vpn_agro, proyecto = "Agrotecnológico"),
+  data.frame(vpn = vpn_infra, proyecto = "Infraestructura")
+)
+
+dibujar(ggplot(vpn_long, aes(x = vpn, fill = proyecto)) +
+  geom_histogram(position = "identity", alpha = 0.5, color = "black", bins = 60) +
+  theme_light() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Distribución simulada del VPN — Agrotecnológico vs. Infraestructura",
+       x = "VPN (millones de USD)", y = "Frecuencia", fill = NULL) +
+  scale_x_continuous(labels = label_dollar()))
+```
+
+**Respuesta:** el histograma (línea punteada en VPN = 0) muestra que
+**ambas** distribuciones quedan casi enteramente a la izquierda de cero:
+el `r round(mean(vpn_agro < 0) * 100, 1)` % de las simulaciones de
+Agrotecnológico y el `r round(mean(vpn_infra < 0) * 100, 1)` % de las de
+Infraestructura dan un VPN negativo. La de Agrotecnológico es un poco más
+angosta y está corrida levemente a la derecha (menos mala) que la de
+Infraestructura, y muestra asimetría hacia la **derecha**
+(coeficiente `r round(psych::skew(vpn_agro), 2)`) por el ingreso
+lognormal; la de Infraestructura muestra asimetría hacia la
+**izquierda** (coeficiente `r round(psych::skew(vpn_infra), 2)`) porque
+ahí es el **costo** el que sigue una lognormal — un costo extremadamente
+alto (cola derecha del costo) se traduce en un VPN extremadamente bajo
+(cola izquierda del VPN).
+
+## Pregunta 2 — VaR y ES al 5 %
+
+> "2. Calcule el VaR al 5 % y el ES al 5 % del VPN de ambas inversiones.
+> Interprete los resultados."
+
+**Respuesta:**
+
+- **Agrotecnológico:** el VPN, con un 95 % de confianza en el horizonte
+  del proyecto, no cae por debajo de USD
+  `r label_dollar()(tabla_vpn$VaR_5[1])` millones. Hay una probabilidad
+  del 5 % de que el VPN sea peor que eso. Si efectivamente cae en ese 5 %
+  de peores escenarios, el VPN esperado ahí (ES) es de USD
+  `r label_dollar()(tabla_vpn$ES_5[1])` millones.
+- **Infraestructura:** con un 95 % de confianza, el VPN no cae por debajo
+  de USD `r label_dollar()(tabla_vpn$VaR_5[2])` millones (probabilidad del
+  5 % de que sea peor). En el 5 % de peores escenarios, el VPN esperado
+  (ES) es de USD `r label_dollar()(tabla_vpn$ES_5[2])` millones.
+
+Infraestructura tiene tanto un VaR como un ES más negativos que
+Agrotecnológico — en el escenario adverso, se pierde más dinero con
+Infraestructura.
+
+## Pregunta 3 — Decisión según el VPN promedio
+
+> "3. Teniendo en cuenta el VPN promedio de los proyectos como criterio
+> de decisión ¿En cual de los dos proyectos invertiría el capital
+> disponible?"
+
+```{r parte3-decision}
+proyecto_mejor_vpn <- tabla_vpn$proyecto[which.max(tabla_vpn$vpn_promedio)]
+```
+
+**Respuesta:** por VPN promedio, **`r proyecto_mejor_vpn`** es la
+**menos mala** opción (`r label_dollar()(max(tabla_vpn$vpn_promedio))`
+millones vs. `r label_dollar()(min(tabla_vpn$vpn_promedio))` millones del
+otro). **Pero** el VPN promedio de las **dos** opciones es negativo —
+ninguno de los dos proyectos es rentable en promedio con estos
+parámetros. Si el criterio es únicamente cuál proyecto es "menos malo",
+se elige `r proyecto_mejor_vpn`; si el criterio es invertir solo en
+proyectos con VPN promedio **positivo**, la respuesta correcta es **no
+invertir en ninguno de los dos**.
+
+## Pregunta 4 — Condición del comité de riesgos (probabilidad de VPN negativo < 10 %)
+
+> "4. Resulta que el comité de riesgos de las empresa que diriges te ha
+> puesto la condición de que solo inviertas en proyectos cuya
+> probabilidad de tener un VPN negativo sea menor al 10 %. Considerando
+> esta condición ¿Invertirías en los proyectos disponibles?"
+
+**Respuesta:** **no** se invertiría en ninguno de los dos proyectos bajo
+esta condición. La probabilidad de VPN negativo es
+`r round(tabla_vpn$prob_vpn_negativo_pct[1], 2)` % en Agrotecnológico y
+`r round(tabla_vpn$prob_vpn_negativo_pct[2], 2)` % en Infraestructura —
+ambas muy por encima del límite del 10 % que exige el comité (de hecho,
+ambas superan el 99 %: con estos parámetros, casi cualquier escenario
+simulado termina en pérdida). Ningún proyecto pasa el filtro de riesgo.
+
+## Pregunta 5 — ¿Rentable en promedio pero peligroso en escenarios extremos?
+
+> "5. Usando el VPN promedio de los proyectos y el ES calculado ¿Es el
+> proyecto rentable en promedio pero excesivamente peligroso en
+> escenarios extremos?"
+
+**Respuesta:** **no** aplica esa lectura para ninguno de los dos
+proyectos — esa pregunta describe un proyecto con VPN promedio
+**positivo** pero un ES muy negativo (rentable en el caso base, peligroso
+en la cola). Acá el problema es anterior a eso: el VPN promedio **ya**
+es negativo (`r label_dollar()(tabla_vpn$vpn_promedio[1])` millones en
+Agrotecnológico, `r label_dollar()(tabla_vpn$vpn_promedio[2])` millones
+en Infraestructura), así que no hay un escenario "base rentable" que el
+ES esté poniendo en riesgo — ambos proyectos ya son perdedores en
+promedio, y el ES (`r label_dollar()(tabla_vpn$ES_5[1])` y
+`r label_dollar()(tabla_vpn$ES_5[2])` millones respectivamente) solo
+confirma que en el peor 5 % de los casos la pérdida es todavía mayor.
