@@ -1,0 +1,564 @@
+---
+title: "Dispersión y distribución de los retornos — repaso con teoría"
+output:
+  html_document:
+    df_print: paged
+---
+
+Este notebook retoma el portafolio de 5 ETFs de la unidad
+**Retornos y portafolios manuales** (mismos tickers, mismos pesos) y le
+aplica las medidas que describen la forma de la distribución de sus
+retornos: dispersión (desviación estándar), forma (asimetría y curtosis),
+y las dos medidas de riesgo de cola que ya vimos en la unidad de VaR/ES,
+esta vez comparando cada activo individual contra el portafolio
+combinado.
+
+## Configuración inicial
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, EnvStats, ggpubr, psych, quantmod, TTR,
+               purrr, PerformanceAnalytics, highcharter, timetk, readxl, scales)
+options(scipen = 999)
+```
+
+------------------------------------------------------------------------
+
+# Parte 0 — Reconstrucción del portafolio
+
+**Qué hace**: repite, de forma condensada, la descarga y construcción del
+portafolio de la unidad anterior (5 ETFs, retornos mensuales continuos,
+pesos 25/25/20/20/10 con rebalanceo mensual) — necesario para tener
+`retornos_mes` y `portfolio_retornos_mes` disponibles en este notebook.
+
+```{r reconstruccion}
+symbols <- c("SPY","EFA", "IJS", "EEM", "AGG")
+
+precios <- quantmod::getSymbols(symbols,
+                                src = 'yahoo',
+                                from = "2010-12-31",
+                                periodicity = "daily",
+                                auto.assign = TRUE,
+                                warnings = FALSE) %>%
+    purrr::map(~quantmod::Ad(get(.))) %>%
+    purrr::reduce(merge.xts) %>%
+    `colnames<-`(symbols)
+
+precios_mes <- xts::to.monthly(x = precios, indexAt = "lastof", OHLC = FALSE)
+retornos_mes <- diff(log(precios_mes)) %>% na.omit()
+
+retornos_mes_long <- retornos_mes %>%
+    tk_tbl(rename_index = "date") %>%
+    gather(key = activo, value = retorno, -date, factor_key = T)
+
+w <- c(0.25, 0.25, 0.20, 0.20, 0.10)
+
+portfolio_retornos_mes <- PerformanceAnalytics::Return.portfolio(R = retornos_mes,
+                                                                 weights = w,
+                                                                 rebalance_on = "months") %>%
+  `colnames<-`("retornos")
+
+tail(portfolio_retornos_mes)
+```
+
+------------------------------------------------------------------------
+
+# Parte 1 — Desviación estándar
+
+**Qué hace**: calcula la desviación estándar mensual de cada activo y del
+portafolio combinado, y grafica cada retorno del portafolio en el tiempo
+coloreado según si cae dentro o fuera de una banda de ±1 desviación
+estándar alrededor de la media.
+
+**Por qué (teoría)**: la desviación estándar es la medida de dispersión
+más usada para volatilidad porque resume, en un solo número, qué tan
+lejos tienden a estar los retornos de su promedio. Pero es una medida
+*simétrica* — penaliza igual una sorpresa positiva que una negativa —,
+algo que conviene tener presente antes de usarla como la única medida de
+riesgo (de ahí que más adelante se complemente con asimetría, curtosis,
+VaR y ES).
+
+```{r stddev-activos}
+PerformanceAnalytics::StdDev(R = retornos_mes)*100
+```
+
+```{r stddev-portafolio}
+PerformanceAnalytics::StdDev(R = retornos_mes, weights = w)*100
+```
+
+## Dispersión de los retornos del portafolio en el tiempo
+
+```{r stddev-dispersion-fecha}
+portfolio_retornos_mes %>%
+    ggplot(mapping = aes(x = index(.), y = retornos)) +
+    geom_point(color = "cornflowerblue") +
+    labs(title = "Dispersion de los retornos por fecha", x = "Mes", y = "Retorno") +
+    theme_light() +
+    theme(plot.title = element_text(size = 11),
+          axis.title = element_text(size = 9),
+          panel.grid = element_blank()) +
+    scale_y_continuous(labels = label_percent(accuracy = 0.01))
+```
+
+## Retornos dentro y fuera de ±1 desviación estándar
+
+**Qué hace**: azul = dentro de la banda (media ± 1 sd), verde = por encima
+(sorpresa positiva grande), rojo = por debajo (sorpresa negativa grande).
+Con una distribución normal se esperaría que ~68% de los puntos caigan en
+azul — es una forma visual rápida de chequear si los retornos reales se
+comportan como normales o tienen colas más gordas de lo esperado.
+
+```{r stddev-bandas}
+sd_plot <- sd(portfolio_retornos_mes)
+mean_plot <- mean(portfolio_retornos_mes)
+
+portfolio_retornos_mes %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Fecha") %>%
+  mutate(Fecha = ymd(Fecha)) %>%
+  mutate(hist_col_red = if_else(retornos < (mean_plot - sd_plot),
+                                retornos, as.numeric(NA)),
+         hist_col_green = if_else(retornos > (mean_plot + sd_plot),
+                                  retornos, as.numeric(NA)),
+         hist_col_blue = if_else(retornos >= (mean_plot - sd_plot) & retornos <= (mean_plot + sd_plot),
+                                 retornos, as.numeric(NA))) %>%
+  ggplot(aes(x = Fecha)) +
+  geom_point(aes(y = hist_col_red),
+             color = "red") +
+  geom_point(aes(y = hist_col_green),
+             color = "green") +
+  geom_point(aes(y = hist_col_blue),
+             color = "blue") +
+  geom_hline(yintercept = (mean_plot + sd_plot),
+             color = "purple",
+             linetype = "dotted") +
+  geom_hline(yintercept = (mean_plot-sd_plot),
+             color = "purple",
+             linetype = "dotted") +
+  labs(title = "Dispersion de los retornos por mes", y = "Retorno", x = "Mes") +
+  scale_x_date(breaks = pretty_breaks(n = 6)) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01)) +
+  theme_light() +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank())
+```
+
+## Retorno esperado vs riesgo (StdDev)
+
+**Por qué (teoría)**: este es el mismo tipo de gráfico riesgo-retorno que
+se usa como base de la frontera eficiente de Markowitz — cada punto es un
+activo (o el portafolio) ubicado según cuánto retorno promedio da y cuánta
+desviación estándar asume para darlo. Un buen portafolio diversificado
+debería quedar más a la izquierda (menos riesgo) que sus componentes más
+volátiles, sin sacrificar todo el retorno.
+
+```{r stddev-riesgo-retorno}
+retornos_mes_long %>%
+  group_by(activo) %>%
+  summarise(retorno_esperado = mean(retorno),
+            desviacion = sd(retorno)) %>%
+  add_row(activo = "Portfolio",
+          desviacion =
+            sd(portfolio_retornos_mes),
+          retorno_esperado =
+            mean(portfolio_retornos_mes)) %>%
+  ggplot(aes(x = desviacion,
+             y = retorno_esperado,
+             color = activo)) +
+  geom_point(size = 2) +
+  annotate("text",
+           x = sd(portfolio_retornos_mes) * 1.13,
+           y = mean(portfolio_retornos_mes),
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Retorno esperado vs riesgo",
+       x = "Riesgo (StdDev)",
+       y = "Retorno esperado") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01)) +
+  scale_x_continuous(labels = label_percent(accuracy = 0.01))
+```
+
+## Desviación estándar con ventana móvil
+
+**Por qué (teoría)**: la volatilidad no es constante en el tiempo (se
+llama *clustering* de volatilidad — periodos tranquilos tienden a seguir
+a periodos tranquilos, y periodos turbulentos a periodos turbulentos). Una
+ventana móvil de 24 meses muestra cómo cambió el riesgo real del
+portafolio a través de crisis y periodos de calma, en vez de un solo
+número fijo para toda la historia.
+
+```{r stddev-rolling}
+ventana <- 24 # Dos años
+
+rolling_sd <- rollapply(data = portfolio_retornos_mes,
+                        width = ventana,
+                        FUN = sd) %>%
+  na.omit() %>%
+  `colnames<-`("rolling_sd")
+
+highchart(type = "stock") %>%
+  hc_title(text = "Volatilidad movil de 24 meses") %>%
+  hc_add_series(round(rolling_sd,4)*100,
+                color = "cornflowerblue",
+                name = "StdDev") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(labels = list(format = "{value}%"),
+           opposite = FALSE,
+           title = list(text = "StdDev")) %>%
+  hc_navigator(height = 20) %>%
+  hc_scrollbar(enabled = F) %>%
+  hc_exporting(enabled= T)
+```
+
+------------------------------------------------------------------------
+
+# Parte 2 — Asimetría (skewness)
+
+**Qué hace**: calcula qué tan simétrica es la distribución de retornos
+alrededor de su media, por activo, por portafolio, y en una ventana móvil
+de 24 meses.
+
+**Por qué (teoría)**: la asimetría mide si las sorpresas grandes tienden
+a ser más frecuentes hacia arriba o hacia abajo. Una asimetría negativa
+(la más común en retornos de renta variable) significa que las caídas
+grandes son más extremas o más frecuentes que las subidas grandes —
+los mercados suben escalando y bajan de golpe. Es información que la
+desviación estándar, al ser simétrica, no captura en absoluto.
+
+```{r skew-calculo}
+PerformanceAnalytics::skewness(retornos_mes)
+PerformanceAnalytics::skewness(portfolio_retornos_mes)
+```
+
+```{r skew-plot}
+retornos_mes_long %>%
+  group_by(activo) %>%
+  summarize(skew_accion = skewness(retorno)) %>%
+  add_row(activo = "Portafolio",
+          skew_accion = skewness(portfolio_retornos_mes)) %>%
+  ggplot(aes(x = activo,
+             y = skew_accion,
+             colour = activo)) +
+  geom_point() +
+  annotate("text",
+           x = "Portafolio",
+           y = skewness(portfolio_retornos_mes) + 0.05,
+           label = "Portafolio",
+           color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Asimetria por activo y portafolio", x = "Activo", y = "Asimetria") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank())
+```
+
+## Asimetría con ventana móvil
+
+```{r skew-rolling}
+ventana <- 24
+
+rolling_skew <- rollapply(data = portfolio_retornos_mes,
+                          width = ventana,
+                          FUN = skewness) %>%
+  na.omit()
+
+highchart(type = "stock") %>%
+  hc_title(text = "Asimetria movil de 24 meses") %>%
+  hc_add_series(rolling_skew,
+                color = "cornflowerblue",
+                name = "Skewness") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(title = list(text = "Skewness"),
+           opposite = FALSE) %>%
+  hc_navigator(height = 20) %>%
+  hc_scrollbar(enabled = F) %>%
+  hc_exporting(enabled= T)
+```
+
+------------------------------------------------------------------------
+
+# Parte 3 — Curtosis
+
+**Qué hace**: calcula el exceso de curtosis (centrado en 0, es decir, una
+normal perfecta da 0) por activo, por portafolio, y en ventana móvil.
+
+**Por qué (teoría)**: la curtosis mide qué tan "gordas" son las colas de
+la distribución comparado con una normal — cuánto más probables son los
+eventos extremos (positivos o negativos) de lo que una normal predeciría.
+Una curtosis positiva (colas gordas, *fat tails*) es la norma en retornos
+financieros: eventos como caídas de mercado de varias desviaciones
+estándar ocurren con mucha más frecuencia de la que una distribución
+normal permitiría — la razón principal por la que confiar solo en la
+desviación estándar subestima el riesgo real de cola.
+
+```{r kurt-calculo}
+# Este calculo de la curtosis esta centrado en 0
+
+kurtosis(retornos_mes)
+kurtosis(portfolio_retornos_mes)
+```
+
+```{r kurt-plot}
+retornos_mes_long %>%
+  group_by(activo) %>%
+  summarize(kurtosis_accion = kurtosis(retorno)) %>%
+  add_row(activo = "Portafolio",
+          kurtosis_accion = kurtosis(portfolio_retornos_mes)) %>%
+  ggplot(aes(x = activo,
+             y = kurtosis_accion,
+             colour = activo)) +
+  geom_point() +
+  annotate("text",
+           x = "Portafolio",
+           y = kurtosis(portfolio_retornos_mes) + 0.05,
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Curtosis por activo y portafolio", x = "Activo", y = "Curtosis") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank())
+```
+
+## Curtosis con ventana móvil
+
+```{r kurt-rolling}
+ventana <- 24
+
+rolling_kurtosis <- rollapply(data = portfolio_retornos_mes,
+                          width = ventana,
+                          FUN = kurtosis) %>%
+  na.omit()
+
+highchart(type = "stock") %>%
+  hc_title(text = "Curtosis movil de 24 meses") %>%
+  hc_add_series(rolling_kurtosis,
+                color = "cornflowerblue",
+                name = "Curtosis") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(title = list(text = "Exceso de Curtosis"),
+           opposite = FALSE) %>%
+  hc_navigator(height = 20) %>%
+  hc_scrollbar(enabled = F) %>%
+  hc_exporting(enabled= T)
+```
+
+------------------------------------------------------------------------
+
+# Parte 4 — Valor en riesgo (VaR)
+
+**Qué hace**: calcula el VaR histórico al 95% (percentil 5% de la
+distribución empírica de retornos, `invert = TRUE` para expresarlo como
+pérdida positiva) por activo y por portafolio, comparado contra el
+retorno esperado, y en ventana móvil.
+
+**Por qué (teoría)**: a diferencia de la simulación Monte Carlo de la
+unidad anterior (que generaba la distribución desde una normal o
+triangular teórica), aquí el VaR se calcula directamente sobre los
+retornos **históricos reales** — el percentil empírico ya incorpora
+cualquier asimetría o curtosis que tenga la serie real, sin asumir
+ninguna forma de distribución de antemano.
+
+```{r var-calculo}
+var_activos <- VaR(R = retornos_mes, p = 0.05, invert = T)
+var_activos
+
+var_portafolio <- VaR(R = portfolio_retornos_mes, p = 0.05, invert = T)
+var_portafolio
+```
+
+## Valor en riesgo por activo
+
+```{r var-por-activo}
+retornos_mes_long %>%
+  group_by(activo) %>%
+  summarize(var_accion = VaR(R = retorno, invert = T, p = 0.05)) %>%
+  add_row(activo = "Portafolio",
+          var_accion = VaR(R = portfolio_retornos_mes, p = 0.05, invert = T)) %>%
+  ggplot(aes(x = activo,
+             y = var_accion,
+             colour = activo)) +
+  geom_point() +
+  annotate("text",
+           x = "Portafolio",
+           y = VaR(R = portfolio_retornos_mes, p = 0.05, invert = T) * 1.05,
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "VaR por activo y portafolio", x = "Activo", y = "VaR") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank()) +
+    scale_y_continuous(labels = label_percent(accuracy = 0.01),
+                       transform = transform_reverse())
+```
+
+## Valor en riesgo vs retorno esperado
+
+```{r var-vs-retorno}
+retornos_mes_long %>%
+  group_by(activo) %>%
+  summarise(retorno_esperado = mean(retorno),
+            var = VaR(R = retorno, p = 0.05, invert = T)) %>%
+  add_row(activo = "Portafolio",
+          var = VaR(R = portfolio_retornos_mes, p = 0.05, invert = T),
+          retorno_esperado = mean(portfolio_retornos_mes)) %>%
+  ggplot(aes(x = var,
+             y = retorno_esperado,
+             color = activo)) +
+  geom_point(size = 2) +
+  annotate("text",
+           x = VaR(R = portfolio_retornos_mes, p = 0.05, invert = T) * 1.05,
+           y = mean(portfolio_retornos_mes),
+           label = "Portafolio",
+           color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Retorno esperado vs valor en riesgo",
+       x = "Riesgo (VaR)",
+       y = "Retorno esperado") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01)) +
+  scale_x_continuous(labels = label_percent(accuracy = 0.01),
+                     transform = transform_reverse())
+```
+
+## Valor en riesgo con ventana móvil
+
+```{r var-rolling}
+ventana <- 24
+
+rolling_var <- rollapply(data = portfolio_retornos_mes,
+                        width = ventana,
+                        FUN = function(x) VaR(R = x, p = 0.05, invert = T)) %>%
+  na.omit()
+
+highchart(type = "stock") %>%
+  hc_title(text = "Valor en riesgo movil de 24 meses") %>%
+  hc_add_series(rolling_var*100,
+                color = "cornflowerblue",
+                name = "VaR") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(title = list(text = "VaR"),
+           opposite = FALSE,
+           reversed = TRUE,
+           labels = list(format = "{value}%")) %>%
+  hc_navigator(height = 20) %>%
+  hc_scrollbar(enabled = F) %>%
+  hc_exporting(enabled= T)
+```
+
+------------------------------------------------------------------------
+
+# Parte 5 — Pérdida esperada (ES)
+
+**Qué hace**: igual que la Parte 4, pero con Expected Shortfall — el
+promedio de las pérdidas dado que ya se cayó en el peor 5% de los casos.
+
+**Por qué (teoría)**: mismo argumento que en la unidad de VaR/ES, ahora
+aplicado a datos históricos reales en vez de simulados — el ES siempre es
+igual o más severo que el VaR al mismo nivel de confianza, y es
+especialmente más severo cuanto más gorda sea la cola izquierda de la
+distribución (es decir, cuanto mayor sea el exceso de curtosis visto en
+la Parte 3).
+
+```{r es-calculo}
+es_activos <- ES(R = retornos_mes, p = 0.05, invert = T)
+es_activos
+
+es_portafolio <- ES(R = portfolio_retornos_mes, p = 0.05, invert = T)
+es_portafolio
+```
+
+## Pérdida esperada por activo
+
+```{r es-por-activo}
+retornos_mes_long %>%
+  group_by(activo) %>%
+  summarize(es_accion = ES(R = retorno, invert = T, p = 0.05)) %>%
+  add_row(activo = "Portafolio",
+          es_accion = ES(R = portfolio_retornos_mes, p = 0.05, invert = T)) %>%
+  ggplot(aes(x = activo,
+             y = es_accion,
+             colour = activo)) +
+  geom_point() +
+  annotate("text",
+           x = "Portafolio",
+           y = ES(R = portfolio_retornos_mes, p = 0.05, invert = T) * 1.05,
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "ES por activo y portafolio", x = "Activo", y = "ES") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01),
+                     transform = transform_reverse())
+```
+
+## Pérdida esperada vs retorno esperado
+
+```{r es-vs-retorno}
+retornos_mes_long %>%
+  group_by(activo) %>%
+  summarise(retorno_esperado = mean(retorno),
+            ES = ES(R = retorno, p = 0.05, invert = T)) %>%
+  add_row(activo = "Portafolio",
+          ES = ES(R = portfolio_retornos_mes, p = 0.05, invert = T),
+          retorno_esperado = mean(portfolio_retornos_mes)) %>%
+  ggplot(aes(x = ES,
+             y = retorno_esperado,
+             color = activo)) +
+  geom_point(size = 2) +
+  annotate("text",
+           x = ES(R = portfolio_retornos_mes, p = 0.05, invert = T) * 1.13,
+           y = mean(portfolio_retornos_mes),
+           label = "Portafolio",
+           color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Retorno esperado vs perdida esperada",
+       x = "Riesgo (ES)",
+       y = "Retorno esperado") +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01)) +
+  scale_x_continuous(labels = label_percent(accuracy = 0.01),
+                     transform = transform_reverse())
+```
+
+## Pérdida esperada con ventana móvil
+
+```{r es-rolling}
+ventana <- 24
+
+rolling_es <- rollapply(data = portfolio_retornos_mes,
+                        width = ventana,
+                        FUN = function(x) ES(R = x, p = 0.05, invert = T)) %>%
+  na.omit()
+
+highchart(type = "stock") %>%
+  hc_title(text = "Perdida esperada movil de 24 meses") %>%
+  hc_add_series(rolling_es*100,
+                color = "cornflowerblue",
+                name = "ES") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(title = list(text = "ES"),
+           opposite = FALSE,
+           reversed = TRUE,
+           labels = list(format = "{value}%")) %>%
+  hc_navigator(height = 20) %>%
+  hc_scrollbar(enabled = F) %>%
+  hc_exporting(enabled= T)
+```
+
+**Respuesta:** con las 5 medidas en conjunto, el portafolio diversificado
+sale con desviación estándar de
+**`r label_percent(accuracy = 0.01)(sd(as.numeric(portfolio_retornos_mes)))`**,
+por debajo de sus componentes más riesgosos (IJS y EEM), y con
+VaR(95%) de **`r label_percent(accuracy = 0.01)(as.numeric(VaR(R = portfolio_retornos_mes, p = 0.05, invert = TRUE)))`**
+y ES(95%) de **`r label_percent(accuracy = 0.01)(as.numeric(ES(R = portfolio_retornos_mes, p = 0.05, invert = TRUE)))`** —
+la diferencia entre ambos (ES siempre más severo) es justamente la cola
+que la desviación estándar por sí sola no alcanza a describir.
