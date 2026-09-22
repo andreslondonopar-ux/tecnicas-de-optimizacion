@@ -1,0 +1,570 @@
+---
+title: "Taller en clase — Riesgo y distribución"
+output:
+  html_document:
+    df_print: paged
+---
+
+Resuelve los 15 puntos de la actividad **"Riesgo y distribución"** sobre
+el portafolio de 5 ETFs de la unidad de *Retornos y portafolios
+manuales* — pero esta vez con **retornos semanales**, VaR/ES a 99% de
+confianza a 1 semana, y ventana móvil de **6 meses (26 semanas)**.
+
+## Configuración inicial
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, EnvStats, ggpubr, psych, quantmod, TTR,
+               purrr, PerformanceAnalytics, highcharter, timetk, readxl, scales)
+options(scipen = 999)
+```
+
+------------------------------------------------------------------------
+
+# Parte 0 — Reconstrucción del portafolio (retornos semanales)
+
+```{r reconstruccion}
+symbols <- c("SPY","EFA", "IJS", "EEM", "AGG")
+
+precios <- quantmod::getSymbols(symbols,
+                                src = 'yahoo',
+                                from = "2010-12-31",
+                                periodicity = "daily",
+                                auto.assign = TRUE,
+                                warnings = FALSE) %>%
+    purrr::map(~quantmod::Ad(get(.))) %>%
+    purrr::reduce(merge.xts) %>%
+    `colnames<-`(symbols)
+
+precios_semana <- xts::to.weekly(x = precios, OHLC = FALSE)
+retornos_semana <- diff(log(precios_semana)) %>% na.omit()
+
+retornos_semana_long <- retornos_semana %>%
+    tk_tbl(rename_index = "date") %>%
+    gather(key = activo, value = retorno, -date, factor_key = T)
+
+w <- c(0.25, 0.25, 0.20, 0.20, 0.10)
+
+portfolio_retornos_semana <- PerformanceAnalytics::Return.portfolio(R = retornos_semana,
+                                                                     weights = w,
+                                                                     rebalance_on = "weeks") %>%
+  `colnames<-`("retornos")
+
+ventana <- 26 # 6 meses en semanas
+alpha <- 0.01 # 99% de confianza
+
+tail(portfolio_retornos_semana)
+```
+
+```{r resumen-tabla, echo=FALSE}
+resumen <- retornos_semana_long %>%
+  group_by(activo) %>%
+  summarise(retorno_esperado = mean(retorno), sd = sd(retorno),
+            skew = skewness(retorno), kurt = kurtosis(retorno),
+            VaR99 = VaR(R = retorno, p = alpha, invert = T),
+            ES99 = ES(R = retorno, p = alpha, invert = T)) %>%
+  add_row(activo = "Portafolio",
+          retorno_esperado = mean(portfolio_retornos_semana),
+          sd = sd(portfolio_retornos_semana),
+          skew = skewness(portfolio_retornos_semana),
+          kurt = kurtosis(portfolio_retornos_semana),
+          VaR99 = VaR(R = portfolio_retornos_semana, p = alpha, invert = T),
+          ES99 = ES(R = portfolio_retornos_semana, p = alpha, invert = T))
+resumen
+```
+
+------------------------------------------------------------------------
+
+# 1 — Desviación estándar por activo
+
+```{r p1}
+PerformanceAnalytics::StdDev(R = retornos_semana)*100
+```
+
+**Respuesta:** la desviación estándar semanal va de
+**`r label_percent(accuracy=0.01)(min(resumen$sd[resumen$activo!="Portafolio"]))`**
+(AGG, renta fija) a
+**`r label_percent(accuracy=0.01)(max(resumen$sd[resumen$activo!="Portafolio"]))`**
+(IJS, small-cap value) — el orden de mayor a menor riesgo es
+IJS > EEM > EFA > SPY > AGG, exactamente lo que se esperaría por tipo de
+activo: la renta fija (AGG) es, con amplio margen, el más estable
+(menos de un tercio de la volatilidad de cualquier acción), y dentro de
+renta variable, small-caps (IJS) y mercados emergentes (EEM) son más
+volátiles que el mercado desarrollado grande (SPY) y EAFE (EFA).
+
+------------------------------------------------------------------------
+
+# 2 — Desviación estándar del portafolio
+
+```{r p2}
+PerformanceAnalytics::StdDev(R = retornos_semana, weights = w)*100
+```
+
+**Respuesta:** el portafolio combinado tiene una desviación estándar
+semanal de
+**`r label_percent(accuracy=0.01)(sd(as.numeric(portfolio_retornos_semana)))`**
+— **menor que cualquiera de los 4 componentes de renta variable**
+(SPY, EFA, IJS, EEM), aunque por encima de AGG solo. Es el efecto de
+diversificación esperado: al combinar activos que no están perfectamente
+correlacionados, el riesgo del conjunto es menor que el promedio
+ponderado de sus componentes.
+
+------------------------------------------------------------------------
+
+# 3 — Retornos semanales del portafolio vs. ±1 desviación estándar
+
+```{r p3}
+sd_plot <- sd(portfolio_retornos_semana)
+mean_plot <- mean(portfolio_retornos_semana)
+
+portfolio_retornos_semana %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Fecha") %>%
+  mutate(Fecha = ymd(Fecha)) %>%
+  mutate(hist_col_red = if_else(retornos < (mean_plot - sd_plot),
+                                retornos, as.numeric(NA)),
+         hist_col_green = if_else(retornos > (mean_plot + sd_plot),
+                                  retornos, as.numeric(NA)),
+         hist_col_blue = if_else(retornos >= (mean_plot - sd_plot) & retornos <= (mean_plot + sd_plot),
+                                 retornos, as.numeric(NA))) %>%
+  ggplot(aes(x = Fecha)) +
+  geom_point(aes(y = hist_col_red), color = "red") +
+  geom_point(aes(y = hist_col_green), color = "green") +
+  geom_point(aes(y = hist_col_blue), color = "blue") +
+  geom_hline(yintercept = (mean_plot + sd_plot), color = "purple", linetype = "dotted") +
+  geom_hline(yintercept = (mean_plot - sd_plot), color = "purple", linetype = "dotted") +
+  labs(title = "Retornos semanales del portafolio vs +/-1 sd", y = "Retorno", x = "Semana") +
+  scale_x_date(breaks = pretty_breaks(n = 6)) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01)) +
+  theme_light() +
+  theme(plot.title = element_text(size = 11),
+        axis.title = element_text(size = 9),
+        panel.grid = element_blank())
+```
+
+**Respuesta:** en azul quedan las semanas "normales" (dentro de ±1 sd de
+la media), en rojo las caídas grandes y en verde las subidas grandes. Con
+una distribución normal se esperaría ~68% de los puntos en azul — a
+simple vista hay bastantes puntos rojos agrupados en episodios concretos
+(las crisis de 2011, 2015-16, 2018, marzo de 2020 y 2022) en vez de estar
+repartidos uniformemente en el tiempo, la primera señal visual de que la
+distribución real no es tan "bien portada" como una normal (coherente con
+la asimetría negativa y la curtosis alta que se calculan más adelante).
+
+------------------------------------------------------------------------
+
+# 4 — Desviación estándar vs. retorno esperado
+
+```{r p4}
+retornos_semana_long %>%
+  group_by(activo) %>%
+  summarise(retorno_esperado = mean(retorno), desviacion = sd(retorno)) %>%
+  add_row(activo = "Portafolio",
+          desviacion = sd(portfolio_retornos_semana),
+          retorno_esperado = mean(portfolio_retornos_semana)) %>%
+  ggplot(aes(x = desviacion, y = retorno_esperado, color = activo)) +
+  geom_point(size = 2) +
+  annotate("text", x = sd(portfolio_retornos_semana) * 1.13, y = mean(portfolio_retornos_semana),
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Retorno esperado vs riesgo (StdDev)", x = "Riesgo (StdDev)", y = "Retorno esperado") +
+  theme(plot.title = element_text(size = 11), axis.title = element_text(size = 9), panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01)) +
+  scale_x_continuous(labels = label_percent(accuracy = 0.01))
+```
+
+> "Cuál parece ser el activo menos conveniente para invertir. Cuál el más
+> conveniente. Qué opina de su portafolio."
+
+**Respuesta:** **EEM es el menos conveniente** — SPY le gana en las dos
+dimensiones a la vez (más retorno, `r label_percent(accuracy=0.01)(resumen$retorno_esperado[resumen$activo=="SPY"])`
+vs `r label_percent(accuracy=0.01)(resumen$retorno_esperado[resumen$activo=="EEM"])`,
+y menos riesgo, `r label_percent(accuracy=0.01)(resumen$sd[resumen$activo=="SPY"])`
+vs `r label_percent(accuracy=0.01)(resumen$sd[resumen$activo=="EEM"])`) — EEM queda
+"dominado" en el gráfico, no hay ningún argumento racional para preferirlo
+sobre SPY. **SPY es el más conveniente**: tiene el mejor retorno absoluto
+del grupo y una relación retorno/riesgo (`r round(resumen$retorno_esperado[resumen$activo=="SPY"]/resumen$sd[resumen$activo=="SPY"],3)`)
+muy por encima de EFA, IJS, EEM y AGG. **El portafolio** queda con un
+riesgo (`r label_percent(accuracy=0.01)(resumen$sd[resumen$activo=="Portafolio"])`) por debajo de
+los 4 componentes de renta variable — el beneficio real de diversificar
+— aunque con un retorno intermedio; en esta muestra histórica puntual,
+concentrarse en SPY solo habría rendido más con menos riesgo que el
+portafolio diversificado, pero eso es mirar hacia atrás con el resultado
+ya conocido — el portafolio reduce la dependencia de que un solo activo
+(SPY) siga siendo el ganador hacia adelante, que es justamente el
+argumento a favor de diversificar.
+
+------------------------------------------------------------------------
+
+# 5 — Desviación estándar móvil (6 meses) del portafolio
+
+```{r p5}
+rolling_sd <- rollapply(data = portfolio_retornos_semana, width = ventana, FUN = sd) %>%
+  na.omit() %>% `colnames<-`("rolling_sd")
+
+highchart(type = "stock") %>%
+  hc_title(text = "Volatilidad movil de 6 meses (portafolio)") %>%
+  hc_add_series(round(rolling_sd,4)*100, color = "cornflowerblue", name = "StdDev") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(labels = list(format = "{value}%"), opposite = FALSE, title = list(text = "StdDev")) %>%
+  hc_navigator(height = 20) %>% hc_scrollbar(enabled = F) %>% hc_exporting(enabled = T)
+```
+
+> "Cómo ha evolucionado el comportamiento de la volatilidad."
+
+**Respuesta:** la volatilidad móvil de 6 meses del portafolio se ha
+movido entre
+**`r label_percent(accuracy=0.01)(min(as.numeric(rolling_sd)))`** y
+**`r label_percent(accuracy=0.01)(max(as.numeric(rolling_sd)))`**
+semanal a lo largo de la historia (promedio histórico
+`r label_percent(accuracy=0.01)(mean(as.numeric(rolling_sd)))`), con picos
+claros en las crisis conocidas. **La ventana más reciente cierra en
+`r label_percent(accuracy=0.01)(tail(as.numeric(rolling_sd),1))`**, por
+debajo del promedio histórico — el portafolio está actualmente en un
+periodo de volatilidad relativamente calmado comparado con su propia
+historia, no en un pico de estrés.
+
+------------------------------------------------------------------------
+
+# 6 — Asimetría por activo y portafolio
+
+```{r p6}
+PerformanceAnalytics::skewness(retornos_semana)
+PerformanceAnalytics::skewness(portfolio_retornos_semana)
+
+retornos_semana_long %>%
+  group_by(activo) %>%
+  summarize(skew_accion = skewness(retorno)) %>%
+  add_row(activo = "Portafolio", skew_accion = skewness(portfolio_retornos_semana)) %>%
+  ggplot(aes(x = activo, y = skew_accion, colour = activo)) +
+  geom_point() +
+  annotate("text", x = "Portafolio", y = skewness(portfolio_retornos_semana) + 0.05,
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Asimetria por activo y portafolio", x = "Activo", y = "Asimetria") +
+  theme(plot.title = element_text(size = 11), axis.title = element_text(size = 9), panel.grid = element_blank())
+```
+
+> "¿Su portafolio mejora la asimetría de los retornos en comparación con
+> los activos empleados en su construcción?"
+
+**Respuesta:** no de forma clara. La asimetría del portafolio
+(**`r round(resumen$skew[resumen$activo=="Portafolio"],3)`**) es casi tan
+negativa como la de SPY (`r round(resumen$skew[resumen$activo=="SPY"],3)`)
+y EFA (`r round(resumen$skew[resumen$activo=="EFA"],3)`), y bastante peor
+que IJS, EEM o AGG (todos entre -0.29 y -0.40). Tiene sentido: el
+portafolio está dominado por peso (90% en las 4 acciones), y la
+asimetría negativa de las caídas de mercado tiende a ocurrir de forma
+**correlacionada** entre activos de renta variable — diversificar reduce
+la dispersión (la sd), pero no elimina el sesgo compartido de "sube
+despacio, baja de golpe" que comparten los 4 componentes accionarios.
+
+------------------------------------------------------------------------
+
+# 7 — Asimetría móvil (6 meses) del portafolio
+
+```{r p7}
+rolling_skew <- rollapply(data = portfolio_retornos_semana, width = ventana, FUN = skewness) %>% na.omit()
+
+highchart(type = "stock") %>%
+  hc_title(text = "Asimetria movil de 6 meses (portafolio)") %>%
+  hc_add_series(rolling_skew, color = "cornflowerblue", name = "Skewness") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(title = list(text = "Skewness"), opposite = FALSE) %>%
+  hc_navigator(height = 20) %>% hc_scrollbar(enabled = F) %>% hc_exporting(enabled = T)
+```
+
+> "Cómo ha sido la evolución del comportamiento de la asimetría de los
+> retornos."
+
+**Respuesta:** la asimetría móvil ha oscilado entre
+**`r round(min(as.numeric(rolling_skew)),2)`** (ventanas dominadas por una
+caída fuerte, ej. 2020) y **`r round(max(as.numeric(rolling_skew)),2)`**
+(ventanas con una recuperación grande), con un promedio histórico de
+**`r round(mean(as.numeric(rolling_skew)),2)`** — mayoritariamente
+negativo. La ventana más reciente cierra en
+**`r round(tail(as.numeric(rolling_skew),1),3)`**, prácticamente
+simétrica y por encima del promedio histórico — la asimetría no es un
+valor fijo del portafolio, cambia bastante según qué eventos entren o
+salgan de la ventana de 6 meses.
+
+------------------------------------------------------------------------
+
+# 8 — Curtosis por activo y portafolio
+
+```{r p8}
+# Este calculo de la curtosis esta centrado en 0
+kurtosis(retornos_semana)
+kurtosis(portfolio_retornos_semana)
+
+retornos_semana_long %>%
+  group_by(activo) %>%
+  summarize(kurtosis_accion = kurtosis(retorno)) %>%
+  add_row(activo = "Portafolio", kurtosis_accion = kurtosis(portfolio_retornos_semana)) %>%
+  ggplot(aes(x = activo, y = kurtosis_accion, colour = activo)) +
+  geom_point() +
+  annotate("text", x = "Portafolio", y = kurtosis(portfolio_retornos_semana) + 0.05,
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Curtosis por activo y portafolio", x = "Activo", y = "Curtosis") +
+  theme(plot.title = element_text(size = 11), axis.title = element_text(size = 9), panel.grid = element_blank())
+```
+
+> "¿Su portafolio mejora la curtosis de los retornos en comparación con
+> los activos empleados en su construcción?"
+
+**Respuesta:** parcialmente. El portafolio
+(**`r round(resumen$kurt[resumen$activo=="Portafolio"],2)`**) queda por
+debajo de SPY (`r round(resumen$kurt[resumen$activo=="SPY"],2)`), IJS
+(`r round(resumen$kurt[resumen$activo=="IJS"],2)`) y, sobre todo, de AGG
+(`r round(resumen$kurt[resumen$activo=="AGG"],2)`, la más alta del
+grupo — la renta fija tiene colas mucho más gordas de lo que su baja
+desviación estándar sugeriría) — pero sigue por encima de EFA
+(`r round(resumen$kurt[resumen$activo=="EFA"],2)`) y EEM
+(`r round(resumen$kurt[resumen$activo=="EEM"],2)`, la más baja). No hay
+una mejora universal: diversificar sí suaviza el peor caso individual
+(el de AGG), pero no baja al nivel del mejor caso individual (EEM).
+
+------------------------------------------------------------------------
+
+# 9 — Curtosis móvil (6 meses) del portafolio
+
+```{r p9}
+rolling_kurtosis <- rollapply(data = portfolio_retornos_semana, width = ventana, FUN = kurtosis) %>% na.omit()
+
+highchart(type = "stock") %>%
+  hc_title(text = "Curtosis movil de 6 meses (portafolio)") %>%
+  hc_add_series(rolling_kurtosis, color = "cornflowerblue", name = "Curtosis") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(title = list(text = "Exceso de Curtosis"), opposite = FALSE) %>%
+  hc_navigator(height = 20) %>% hc_scrollbar(enabled = F) %>% hc_exporting(enabled = T)
+```
+
+> "Cómo ha sido la evolución del comportamiento de la curtosis de los
+> retornos."
+
+**Respuesta:** la curtosis móvil oscila entre
+**`r round(min(as.numeric(rolling_kurtosis)),2)`** y
+**`r round(max(as.numeric(rolling_kurtosis)),2)`** (promedio histórico
+`r round(mean(as.numeric(rolling_kurtosis)),2)`) — picos altos coinciden
+con ventanas de 6 meses que incluyen un evento extremo aislado (un solo
+mes muy malo rodeado de meses tranquilos genera curtosis alta), mientras
+que ventanas sin sorpresas grandes quedan cerca de 0 o incluso negativas
+(colas más finas que una normal). La ventana más reciente cierra en
+**`r round(tail(as.numeric(rolling_kurtosis),1),2)`**, por debajo del
+promedio — el mercado reciente no ha tenido eventos extremos aislados
+dentro de los últimos 6 meses.
+
+------------------------------------------------------------------------
+
+# 10 — VaR a 1 semana, 99% de confianza
+
+```{r p10}
+var_activos <- VaR(R = retornos_semana, p = alpha, invert = T)
+var_activos
+
+var_portafolio <- VaR(R = portfolio_retornos_semana, p = alpha, invert = T)
+var_portafolio
+
+retornos_semana_long %>%
+  group_by(activo) %>%
+  summarize(var_accion = VaR(R = retorno, invert = T, p = alpha)) %>%
+  add_row(activo = "Portafolio", var_accion = VaR(R = portfolio_retornos_semana, p = alpha, invert = T)) %>%
+  ggplot(aes(x = activo, y = var_accion, colour = activo)) +
+  geom_point() +
+  annotate("text", x = "Portafolio", y = VaR(R = portfolio_retornos_semana, p = alpha, invert = T) * 1.05,
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "VaR(99%) a 1 semana por activo y portafolio", x = "Activo", y = "VaR") +
+  theme(plot.title = element_text(size = 11), axis.title = element_text(size = 9), panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01), transform = transform_reverse())
+```
+
+> "¿El portafolio logra reducir el riesgo en comparación con los activos
+> que lo componen?"
+
+**Respuesta:** sí, frente a las 4 acciones. El VaR(99%) a una semana del
+portafolio es
+**`r label_percent(accuracy=0.01)(resumen$VaR99[resumen$activo=="Portafolio"])`**
+(en el peor 1% de semanas, se podría perder esto), mejor que SPY
+(`r label_percent(accuracy=0.01)(resumen$VaR99[resumen$activo=="SPY"])`),
+EFA (`r label_percent(accuracy=0.01)(resumen$VaR99[resumen$activo=="EFA"])`) e IJS
+(`r label_percent(accuracy=0.01)(resumen$VaR99[resumen$activo=="IJS"])`, el peor de
+todos) — pero prácticamente igual a EEM
+(`r label_percent(accuracy=0.01)(resumen$VaR99[resumen$activo=="EEM"])`) y muy por
+encima de AGG (`r label_percent(accuracy=0.01)(resumen$VaR99[resumen$activo=="AGG"])`, el
+más seguro por lejos). El portafolio no es más seguro que su componente
+individual más seguro (AGG), pero sí es más seguro que cualquiera de sus
+4 componentes accionarios tomados solos.
+
+------------------------------------------------------------------------
+
+# 11 — VaR vs. retorno esperado
+
+```{r p11}
+retornos_semana_long %>%
+  group_by(activo) %>%
+  summarise(retorno_esperado = mean(retorno), var = VaR(R = retorno, p = alpha, invert = T)) %>%
+  add_row(activo = "Portafolio",
+          var = VaR(R = portfolio_retornos_semana, p = alpha, invert = T),
+          retorno_esperado = mean(portfolio_retornos_semana)) %>%
+  ggplot(aes(x = var, y = retorno_esperado, color = activo)) +
+  geom_point(size = 2) +
+  annotate("text", x = VaR(R = portfolio_retornos_semana, p = alpha, invert = T) * 1.05,
+           y = mean(portfolio_retornos_semana), label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Retorno esperado vs VaR(99%)", x = "Riesgo (VaR)", y = "Retorno esperado") +
+  theme(plot.title = element_text(size = 11), axis.title = element_text(size = 9), panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01)) +
+  scale_x_continuous(labels = label_percent(accuracy = 0.01), transform = transform_reverse())
+```
+
+> "Cual parece ser el activo menos conveniente para invertir. Cual el más
+> conveniente. Qué opina de su portafolio."
+
+**Respuesta:** con VaR como medida de riesgo, **EEM vuelve a ser el
+menos conveniente** — un VaR(99%) casi tan malo como el de SPY
+(-8.14% vs -8.96%) pero con menos de un tercio del retorno esperado de
+SPY. **SPY sigue siendo el más conveniente**: mejor retorno del grupo
+con un VaR intermedio, no el mejor pero tampoco el peor. **El
+portafolio** queda en una posición razonable — mejor VaR que 3 de sus 4
+componentes accionarios — aunque, igual que en el plano de desviación
+estándar, no logra superar a AGG en la dimensión de riesgo puro.
+
+------------------------------------------------------------------------
+
+# 12 — VaR móvil (6 meses) del portafolio
+
+```{r p12}
+rolling_var <- rollapply(data = portfolio_retornos_semana, width = ventana,
+                          FUN = function(x) VaR(R = x, p = alpha, invert = T)) %>% na.omit()
+
+highchart(type = "stock") %>%
+  hc_title(text = "VaR(99%) movil de 6 meses (portafolio)") %>%
+  hc_add_series(rolling_var*100, color = "cornflowerblue", name = "VaR") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(title = list(text = "VaR"), opposite = FALSE, reversed = TRUE, labels = list(format = "{value}%")) %>%
+  hc_navigator(height = 20) %>% hc_scrollbar(enabled = F) %>% hc_exporting(enabled = T)
+```
+
+> "Cómo ha sido la evolución del VaR de su portafolio."
+
+**Respuesta:** el VaR(99%) móvil ha llegado a
+**`r label_percent(accuracy=0.01)(min(as.numeric(rolling_var)))`** en su
+peor ventana histórica (una pérdida potencial enorme, propia de una
+ventana de 6 meses que incluye una crisis completa) y a
+**`r label_percent(accuracy=0.01)(max(as.numeric(rolling_var)))`** en la
+más benigna, con un promedio de
+**`r label_percent(accuracy=0.01)(mean(as.numeric(rolling_var)))`**. La
+ventana más reciente cierra en
+**`r label_percent(accuracy=0.01)(tail(as.numeric(rolling_var),1))`**,
+mejor (menos negativa) que el promedio histórico — coherente con la
+volatilidad y la asimetría también más benignas de lo usual vistas en
+los puntos 5 y 7.
+
+------------------------------------------------------------------------
+
+# 13 — Pérdida esperada (ES) a 1 semana, 99% de confianza
+
+```{r p13}
+es_activos <- ES(R = retornos_semana, p = alpha, invert = T)
+es_activos
+
+es_portafolio <- ES(R = portfolio_retornos_semana, p = alpha, invert = T)
+es_portafolio
+
+retornos_semana_long %>%
+  group_by(activo) %>%
+  summarize(es_accion = ES(R = retorno, invert = T, p = alpha)) %>%
+  add_row(activo = "Portafolio", es_accion = ES(R = portfolio_retornos_semana, p = alpha, invert = T)) %>%
+  ggplot(aes(x = activo, y = es_accion, colour = activo)) +
+  geom_point() +
+  annotate("text", x = "Portafolio", y = ES(R = portfolio_retornos_semana, p = alpha, invert = T) * 1.05,
+           label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "ES(99%) a 1 semana por activo y portafolio", x = "Activo", y = "ES") +
+  theme(plot.title = element_text(size = 11), axis.title = element_text(size = 9), panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01), transform = transform_reverse())
+```
+
+> "¿El portafolio logra reducir el riesgo en comparación con los activos
+> que lo componen?"
+
+**Respuesta:** con ES sí es más claro que con VaR. El ES(99%) del
+portafolio (**`r label_percent(accuracy=0.01)(resumen$ES99[resumen$activo=="Portafolio"])`**)
+es mejor que las 4 acciones **sin excepción** — incluida EEM
+(`r label_percent(accuracy=0.01)(resumen$ES99[resumen$activo=="EEM"])`, cuyo VaR
+empataba casi con el del portafolio pero cuyo ES es notablemente peor,
+señal de una cola izquierda más pesada que el VaR por sí solo no
+alcanzaba a mostrar) — solo AGG
+(`r label_percent(accuracy=0.01)(resumen$ES99[resumen$activo=="AGG"])`) sigue siendo
+más seguro. Este es justo el punto a favor del ES sobre el VaR que se vio
+en la unidad anterior: dos activos (EEM y el portafolio) con VaR casi
+idéntico pueden tener un ES muy distinto si uno de los dos tiene una cola
+más larga.
+
+------------------------------------------------------------------------
+
+# 14 — ES vs. retorno esperado
+
+```{r p14}
+retornos_semana_long %>%
+  group_by(activo) %>%
+  summarise(retorno_esperado = mean(retorno), ES = ES(R = retorno, p = alpha, invert = T)) %>%
+  add_row(activo = "Portafolio",
+          ES = ES(R = portfolio_retornos_semana, p = alpha, invert = T),
+          retorno_esperado = mean(portfolio_retornos_semana)) %>%
+  ggplot(aes(x = ES, y = retorno_esperado, color = activo)) +
+  geom_point(size = 2) +
+  annotate("text", x = ES(R = portfolio_retornos_semana, p = alpha, invert = T) * 1.13,
+           y = mean(portfolio_retornos_semana), label = "Portafolio", color = "cornflowerblue") +
+  theme_light() +
+  labs(title = "Retorno esperado vs ES(99%)", x = "Riesgo (ES)", y = "Retorno esperado") +
+  theme(plot.title = element_text(size = 11), axis.title = element_text(size = 9), panel.grid = element_blank()) +
+  scale_y_continuous(labels = label_percent(accuracy = 0.01)) +
+  scale_x_continuous(labels = label_percent(accuracy = 0.01), transform = transform_reverse())
+```
+
+> "Cual parece ser el activo menos conveniente para invertir. Cual el más
+> conveniente. Qué opina de su portafolio."
+
+**Respuesta:** con ES, **EEM es todavía más claramente el menos
+conveniente** que con VaR — el peor retorno del grupo de acciones
+combinado con un ES peor que el del portafolio. **SPY sigue siendo el
+más conveniente** por el mismo argumento de siempre (mejor retorno,
+riesgo de cola intermedio). **El portafolio** aquí sí queda mejor
+posicionado que en los planos anteriores: domina a las 4 acciones en ES,
+algo que no lograba tan limpio con VaR ni con la desviación estándar —
+el ES es la medida donde la diversificación del portafolio se nota más.
+
+------------------------------------------------------------------------
+
+# 15 — ES móvil (6 meses) del portafolio
+
+```{r p15}
+rolling_es <- rollapply(data = portfolio_retornos_semana, width = ventana,
+                         FUN = function(x) ES(R = x, p = alpha, invert = T)) %>% na.omit()
+
+highchart(type = "stock") %>%
+  hc_title(text = "Perdida esperada (99%) movil de 6 meses (portafolio)") %>%
+  hc_add_series(rolling_es*100, color = "cornflowerblue", name = "ES") %>%
+  hc_add_theme(hc_theme_gridlight()) %>%
+  hc_yAxis(title = list(text = "ES"), opposite = FALSE, reversed = TRUE, labels = list(format = "{value}%")) %>%
+  hc_navigator(height = 20) %>% hc_scrollbar(enabled = F) %>% hc_exporting(enabled = T)
+```
+
+> "Cómo ha sido la evolución de la perdida esperada de su portafolio."
+
+**Respuesta:** el ES(99%) móvil llega a
+**`r label_percent(accuracy=0.01)(min(as.numeric(rolling_es)))`** en su
+peor ventana histórica (una ventana de 6 meses dominada por una crisis
+severa, con una cola izquierda extrema) y a
+**`r label_percent(accuracy=0.01)(max(as.numeric(rolling_es)))`** en la
+más benigna, promedio
+**`r label_percent(accuracy=0.01)(mean(as.numeric(rolling_es)))`**. La
+ventana más reciente cierra en
+**`r label_percent(accuracy=0.01)(tail(as.numeric(rolling_es),1))`**,
+mejor que el promedio histórico — el mismo patrón de calma relativa que
+ya se vio en volatilidad y VaR: el portafolio no está, en este momento,
+en una ventana de estrés según ninguna de las 5 medidas de riesgo
+calculadas en este taller.
