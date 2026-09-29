@@ -1,0 +1,481 @@
+---
+title: "Optimización de portafolios (Media-Varianza) — repaso con teoría"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Configuración inicial
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, xts, quantmod, TTR,
+               stats, zoo, PerformanceAnalytics, PortfolioAnalytics, ROI,
+               ROI.plugin.quadprog, ROI.plugin.glpk, readr, CVXR, scales)
+options(scipen = 999)
+```
+
+------------------------------------------------------------------------
+
+# Parte 1 — Descarga de precios y retornos
+
+**Qué hace**: descarga los precios de cierre ajustados de 20 acciones
+grandes de NASDAQ/NYSE (leídas de un CSV con la lista de tickers) y
+calcula sus retornos mensuales continuos.
+
+**Por qué (teoría)**: la optimización de Markowitz necesita, para cada
+activo, un retorno esperado y una matriz de covarianzas — ambos se
+estiman aquí a partir del histórico de retornos (2020-12-31 en adelante).
+Un universo de 20 activos es lo bastante grande para que la
+diversificación tenga sentido, sin ser tan grande que la matriz de
+covarianzas se vuelva difícil de manejar a mano.
+
+```{r descarga-datos}
+free_rate <- 0.009489
+
+companies <- read_csv(file = "https://raw.githubusercontent.com/salas317/Data/main/NASDAQ_NYSE.csv",
+                      show_col_types = FALSE)[1:20,]
+
+activos <- companies$`Ticker Symbol`
+activos
+```
+
+## Primer intento (falla a propósito)
+
+**Qué hace**: intenta descargar los 20 tickers tal como vienen en el
+CSV — y falla.
+
+**Por qué (el hallazgo real)**: uno de los tickers es `BRK.A`
+(Berkshire Hathaway clase A), pero Yahoo Finance identifica ese activo
+como `BRK-A` (guion, no punto) — la consulta a `BRK.A` devuelve 404, y
+como `getSymbols` sigue de largo con los 19 activos que sí encontró, el
+`colnames<-` posterior falla porque hay 20 nombres para 19 columnas. Es
+un recordatorio de que **el nombre de un ticker no es universal entre
+proveedores de datos** — Bloomberg, Yahoo y el propio NYSE pueden usar
+convenciones distintas para el mismo activo.
+
+```{r intento-1, error=TRUE}
+precios <- quantmod::getSymbols(activos, src = 'yahoo',
+                                from = "2020-12-31",
+                                periodicity = "daily",
+                                auto.assign = T,
+                                warnings = F) %>%
+  purrr::map(~quantmod::Ad(get(.))) %>%
+  purrr::reduce(merge.xts) %>%
+  `colnames<-`(activos)
+```
+
+## Corrección y descarga real
+
+```{r descarga-corregida}
+activos <- activos %>% gsub(pattern = "BRK.A", x = ., replacement = "BRK-A")
+
+precios <- quantmod::getSymbols(activos, src = 'yahoo',
+                                from = "2020-12-31",
+                                periodicity = "daily",
+                                auto.assign = T,
+                                warnings = F) %>%
+  purrr::map(~quantmod::Ad(get(.))) %>%
+  purrr::reduce(merge.xts) %>%
+  `colnames<-`(activos)
+
+retornos_mes <- precios %>%
+  xts::to.monthly(indexAt = "lastof", OHLC = FALSE) %>%
+  TTR::ROC(type = "continuous",
+           na.pad = F)
+
+tail(retornos_mes[, 1:5])
+```
+
+------------------------------------------------------------------------
+
+# Parte 2 — ¿Cuál activo tiene mejor prima por unidad de riesgo?
+
+**Qué hace**: calcula el Sharpe Ratio de cada activo individual con tres
+medidas de riesgo distintas en el denominador — desviación estándar,
+VaR(99%) y Pérdida Esperada(99%).
+
+**Por qué (teoría)**: el Sharpe Ratio (retorno sobre riesgo) es la forma
+más directa de comparar activos con perfiles de riesgo distintos — un
+activo con más retorno absoluto no necesariamente es "mejor" si su
+riesgo también es mucho más alto. Usar tres medidas de riesgo distintas
+muestra si el ranking de activos cambia según cómo se defina "riesgo"
+(dispersión total vs. solo la cola de pérdidas).
+
+```{r sharpe-individual}
+PerformanceAnalytics::SharpeRatio(R = retornos_mes, Rf = 0, FUN = "StdDev")
+```
+
+```{r sharpe-var, warning=FALSE}
+PerformanceAnalytics::SharpeRatio(R = retornos_mes, Rf = 0, FUN = "VaR", p = 0.99)
+```
+
+```{r sharpe-es, warning=FALSE}
+PerformanceAnalytics::SharpeRatio(R = retornos_mes, Rf = 0, FUN = "ES", p = 0.99)
+```
+
+**Nota de calidad de dato**: el Sharpe con VaR y con ES da `NA` para
+**BRK-A** — Berkshire Hathaway clase A cotiza a un precio nominal
+extremadamente alto (cientos de miles de dólares por acción) y con
+retornos mensuales muy estables comparado con el resto del grupo, lo que
+hace que la estimación paramétrica de VaR/ES para ese activo caiga en un
+caso degenerado (la función internamente avisa "VaR calculation produces
+unreliable result"). No es un error del código — es una limitación
+conocida de estimar colas extremas con pocas observaciones y muy poca
+variabilidad.
+
+------------------------------------------------------------------------
+
+# Parte 3 — Especificación del portafolio
+
+**Qué hace**: define el "objeto portafolio" de `PortfolioAnalytics` — el
+universo de activos y las restricciones que debe cumplir cualquier
+combinación de pesos que se proponga.
+
+**Por qué (teoría)**: antes de optimizar hace falta declarar el espacio
+de soluciones válidas. Las dos restricciones más básicas de un
+portafolio real son:
+
+- **`full_investment`**: los pesos deben sumar exactamente 1 (se invierte
+  todo el capital, nada se queda en efectivo).
+- **`long_only`**: ningún peso puede ser negativo (no se permite venta en
+  corto).
+
+```{r spec-portafolio}
+init.portfolio <- PortfolioAnalytics::portfolio.spec(assets = activos,
+                                                     name = "Portafolio inicial")
+
+init.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio,
+                                                     type = "full_investment")
+
+init.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio,
+                                                     type = "long_only")
+
+print(init.portfolio)
+```
+
+------------------------------------------------------------------------
+
+# Parte 4 — Frontera eficiente
+
+**Qué hace**: calcula 100 portafolios óptimos a lo largo de la frontera
+eficiente — para cada nivel de riesgo, el portafolio con el mayor
+retorno posible (o, de forma equivalente, para cada nivel de retorno, el
+de menor riesgo).
+
+**Por qué (teoría)**: la frontera eficiente es el resultado central de
+Markowitz (1952) — de todos los portafolios posibles, solo los que están
+sobre esa curva son "eficientes"; cualquier punto por debajo está
+dominado por otro portafolio con el mismo riesgo pero más retorno.
+
+```{r frontera-eficiente}
+meansd.eff <- PortfolioAnalytics::create.EfficientFrontier(R = retornos_mes,
+                                                           portfolio = init.portfolio,
+                                                           type = 'mean-StdDev',
+                                                           n.portfolios = 100)
+```
+
+## Evolución de los pesos a lo largo de la frontera
+
+```{r frontera-pesos}
+PortfolioAnalytics::chart.EF.Weights(object = meansd.eff,
+                 match.col = "StdDev")
+```
+
+## Frontera sin activo libre de riesgo
+
+```{r frontera-sin-rf}
+PortfolioAnalytics::chart.EfficientFrontier(meansd.eff,
+                                            match.col = 'StdDev',
+                                            type = 'l',
+                                            rf=NULL,
+                                            main = "Frontera eficiente",
+                                            cex.assets = 0.7)
+```
+
+## Frontera con activo libre de riesgo
+
+**Por qué (teoría)**: al agregar un activo libre de riesgo (tasa
+`r scales::label_percent(accuracy=0.01)(free_rate)` anual en este ejercicio), la
+frontera eficiente deja de ser una curva — se convierte en la **Capital
+Market Line**, la línea recta tangente a la frontera de activos riesgosos
+desde el punto (0, free_rate). Cualquier combinación de ese activo libre
+de riesgo con el portafolio tangente domina a cualquier punto de la
+curva original.
+
+```{r frontera-con-rf}
+PortfolioAnalytics::chart.EfficientFrontier(meansd.eff,
+                                            match.col = 'StdDev',
+                                            type = 'l',
+                                            rf = free_rate,
+                                            main = "Frontera eficiente con activo libre de riesgo",
+                                            cex.assets = 0.7)
+```
+
+------------------------------------------------------------------------
+
+# Parte 5 — Cuatro objetivos de optimización
+
+**Por qué (teoría)**: "optimizar un portafolio" no es un único problema
+— depende de qué se le pida al optimizador. Se resuelven acá cuatro
+variantes clásicas, todas sobre el mismo universo de 20 activos y las
+mismas restricciones (`full_investment` + `long_only`).
+
+## 5.1 — Minimizar el riesgo, sin importar el retorno
+
+```{r obj-min-risk}
+risk.portfolio <- PortfolioAnalytics::add.objective(portfolio = init.portfolio,
+                                                    type = "risk",
+                                                    name = "StdDev")
+
+opt.sd <- PortfolioAnalytics::optimize.portfolio(R = retornos_mes,
+                                                 portfolio = risk.portfolio,
+                                                 optimize_method = "ROI",
+                                                 trace = T)
+opt.sd
+```
+
+```{r obj-min-risk-plot}
+PortfolioAnalytics::chart.RiskReward(opt.sd,
+                                     risk.col = "StdDev",
+                                     return.col = "mean",
+                                     chart.assets = TRUE,
+                                     rp = F,
+                                     main = "Minimizacion del riesgo")
+```
+
+Este es el extremo izquierdo de la frontera eficiente — el portafolio de
+**mínima varianza global**.
+
+## 5.2 — Maximizar el retorno, sin importar el riesgo
+
+```{r obj-max-return}
+mean.portfolio <- PortfolioAnalytics::add.objective(portfolio = init.portfolio,
+                                                    type = "return",
+                                                    name = "mean")
+
+opt.mean <- PortfolioAnalytics::optimize.portfolio(R = retornos_mes,
+                                                   portfolio = mean.portfolio,
+                                                   optimize_method = "ROI",
+                                                   trace = T)
+opt.mean
+```
+
+```{r obj-max-return-plot}
+PortfolioAnalytics::chart.RiskReward(opt.mean,
+                                     risk.col = "StdDev",
+                                     return.col = "mean",
+                                     chart.assets = TRUE,
+                                     rp = F,
+                                     main = "Maximizacion del retorno")
+```
+
+**Nota**: sin ninguna restricción que penalice la concentración, este
+objetivo casi siempre termina en una solución de **esquina** — todo el
+capital en el único activo con mejor retorno histórico promedio, sin
+importar su riesgo. Es el extremo derecho de la frontera y, por
+construcción, el menos diversificado posible.
+
+## 5.3 — Minimizar el riesgo para un retorno objetivo dado
+
+```{r obj-target-return}
+risk.portfolio.return <-  PortfolioAnalytics::add.constraint(portfolio = init.portfolio,
+                                                             type = "return",
+                                                             return_target = 0.08)
+
+risk.portfolio.return <- PortfolioAnalytics::add.objective(portfolio = risk.portfolio.return,
+                                                           type = "risk",
+                                                           name = "StdDev")
+
+opt.sd.return <- PortfolioAnalytics::optimize.portfolio(R = retornos_mes,
+                                                        portfolio = risk.portfolio.return,
+                                                        optimize_method = "ROI",
+                                                        trace = T)
+
+opt.sd.return
+```
+
+```{r obj-target-return-plot}
+PortfolioAnalytics::chart.RiskReward(opt.sd.return,
+                                     risk.col = "StdDev",
+                                     return.col = "mean",
+                                     chart.assets = TRUE,
+                                     rp = F,
+                                     main = "Minimizacion del riesgo con retorno objetivo")
+```
+
+Esto es exactamente un punto sobre la frontera eficiente — se fija el
+retorno (8% en este caso) y se busca el portafolio de menor riesgo que
+lo alcance.
+
+## 5.4 — Maximizar el Sharpe Ratio
+
+**Por qué (teoría)**: este es el **portafolio tangente** de la sección
+anterior — el punto de la frontera eficiente donde la línea trazada
+desde el activo libre de riesgo es tangente a la curva. Es, en un
+sentido preciso, "el mejor portafolio de activos riesgosos posible" —
+cualquier inversionista, sin importar su tolerancia al riesgo, debería
+querer una combinación de este portafolio con el activo libre de riesgo.
+
+```{r obj-max-sharpe}
+sr.portfolio <- PortfolioAnalytics::add.objective(portfolio = init.portfolio,
+                                                    type = "risk",
+                                                    name = "StdDev")
+sr.portfolio <- PortfolioAnalytics::add.objective(portfolio = sr.portfolio,
+                                                    type = "return",
+                                                    name = "mean")
+
+opt.sr <- PortfolioAnalytics::optimize.portfolio(R = retornos_mes,
+                                                 portfolio = sr.portfolio,
+                                                 optimize_method = "ROI",
+                                                 trace = T,
+                                                 maxSR = TRUE)
+opt.sr
+```
+
+```{r obj-max-sharpe-plot}
+PortfolioAnalytics::chart.RiskReward(opt.sr,
+                                     risk.col = "StdDev",
+                                     return.col = "mean",
+                                     chart.assets = TRUE,
+                                     rp = F,
+                                     main = "Portafolio que maximiza el Sharpe")
+```
+
+```{r obj-max-sharpe-frontier}
+PortfolioAnalytics::chart.EfficientFrontier(opt.sr,
+                                            match.col = 'StdDev',
+                                            main = "Frontera eficiente con portafolio optimo",
+                                            cex.assets = 0.7,
+                                            tangent.line = T,
+                                            n.portfolios = 100,
+                                            rf = free_rate)
+```
+
+## Pesos del portafolio óptimo (máximo Sharpe)
+
+```{r pesos-sr}
+chart.Weights(opt.sr)
+chart.Weights(opt.sr, plot.type = "barplot")
+```
+
+## Diversificación
+
+**Qué hace**: dos medidas resumen qué tan repartido queda el capital
+entre activos.
+
+**Por qué (teoría)**:
+
+- **`diversification()`** — a mayor número, mejor diversificación (más
+  repartido).
+- **`HHI()`** (Índice Herfindahl-Hirschman, el mismo que se usa para
+  medir concentración de mercado en organización industrial) — a mayor
+  número, más concentración en pocos activos. Un portafolio con todo el
+  peso en un solo activo tiene HHI = 1 (concentración máxima); repartido
+  en partes iguales entre *N* activos, HHI = 1/*N*.
+
+```{r diversificacion}
+diversification(weights = opt.sr$weights)
+HHI(weights = opt.sr$weights)
+```
+
+## Comparación de Sharpe Ratios
+
+```{r comparacion-sharpe}
+data.frame(
+  estrategia = c("Igual peso (implícito)", "Máximo retorno", "Mínimo riesgo",
+                 "Mínimo riesgo, retorno objetivo", "Máximo Sharpe"),
+  sharpe = c(
+    NA,
+    as.numeric(SharpeRatio(R = retornos_mes, Rf = 0, weights = opt.mean$weights, FUN = "StdDev")),
+    as.numeric(SharpeRatio(R = retornos_mes, Rf = 0, weights = opt.sd$weights, FUN = "StdDev")),
+    as.numeric(SharpeRatio(R = retornos_mes, Rf = 0, weights = opt.sd.return$weights, FUN = "StdDev")),
+    as.numeric(SharpeRatio(R = retornos_mes, Rf = 0, weights = opt.sr$weights, FUN = "StdDev"))
+  )
+)
+```
+
+El objetivo que explícitamente maximiza el Sharpe Ratio (`maxSR = TRUE`)
+da, por construcción, el Sharpe más alto de los cuatro — los otros tres
+resuelven un problema distinto (mínima varianza, máximo retorno, retorno
+objetivo) y solo coinciden con el máximo Sharpe por casualidad.
+
+------------------------------------------------------------------------
+
+# Parte 6 — Restricción de pesos máximos (`box constraint`)
+
+**Qué hace**: repite el mismo ejercicio (frontera eficiente + máximo
+Sharpe), pero ahora con un límite explícito de **máximo 30% del capital
+en cualquier activo individual**.
+
+**Por qué (teoría)**: en la práctica, ni los reguladores ni la política
+de riesgo de un fondo suelen permitir que un solo activo domine el
+portafolio — aunque matemáticamente esa fuera la solución óptima sin
+restricciones. La restricción `box` (mínimo y máximo por activo) es la
+forma estándar de imponer límites de concentración sin cambiar el resto
+del problema de optimización.
+
+```{r box-constraint}
+box.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio,
+                                                  type = "box", min = 0, max = 0.3)
+box.portfolio
+```
+
+```{r box-frontera}
+box.eff <- PortfolioAnalytics::create.EfficientFrontier(R = retornos_mes,
+                                                            portfolio = box.portfolio,
+                                                            type = 'mean-StdDev',
+                                                            n.portfolios = 100)
+box.eff
+
+PortfolioAnalytics::chart.EfficientFrontier(box.eff,
+                                            match.col = 'StdDev',
+                                            type = 'l',
+                                            rf=NULL,
+                                            main = "Frontera eficiente",
+                                            cex.assets = 0.7)
+```
+
+```{r box-max-sharpe}
+box.portfolio <- PortfolioAnalytics::add.objective(portfolio = box.portfolio,
+                                                   type = "risk",
+                                                   name = "StdDev")
+box.portfolio <- PortfolioAnalytics::add.objective(portfolio = box.portfolio,
+                                                   type = "return",
+                                                   name = "mean")
+
+opt.box.sr <- PortfolioAnalytics::optimize.portfolio(R = retornos_mes,
+                                                  portfolio = box.portfolio,
+                                                  optimize_method = "ROI",
+                                                  trace = T,
+                                                  maxSR = TRUE)
+opt.box.sr
+```
+
+```{r box-pesos}
+chart.Weights(opt.box.sr)
+chart.Weights(opt.box.sr, plot.type = "barplot")
+
+diversification(weights = opt.box.sr$weights)
+HHI(weights = opt.box.sr$weights)
+```
+
+## Costo de la restricción, en Sharpe Ratio
+
+```{r box-comparacion}
+data.frame(
+  estrategia = c("Máximo Sharpe (sin límite de peso)", "Máximo Sharpe (máx. 30% por activo)"),
+  sharpe = c(
+    as.numeric(SharpeRatio(R = retornos_mes, Rf = 0, weights = opt.sr$weights, FUN = "StdDev")),
+    as.numeric(SharpeRatio(R = retornos_mes, Rf = 0, weights = opt.box.sr$weights, FUN = "StdDev"))
+  )
+)
+```
+
+Toda restricción adicional (aquí, el límite de concentración) solo puede
+**empeorar o igualar** el Sharpe del óptimo sin restringir — nunca
+mejorarlo, porque se está buscando la mejor solución dentro de un
+conjunto de opciones más chico. La pregunta relevante en la práctica no
+es "¿por qué bajó el Sharpe?", sino si el costo en Sharpe vale la pena
+por el beneficio de un portafolio menos concentrado y más fácil de
+justificar frente a un comité de riesgo.
