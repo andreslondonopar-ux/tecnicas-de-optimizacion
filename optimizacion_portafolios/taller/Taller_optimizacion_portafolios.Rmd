@@ -1,0 +1,365 @@
+---
+title: "Taller en clase — Optimización de portafolios (Media-Varianza)"
+output:
+  html_document:
+    df_print: paged
+---
+
+Resuelve el **"Taller Optimización de portafolios"** (TO 2026-2): 20
+acciones (mismas del repaso teórico de la unidad), precios diarios
+2022-12-31 a 2026-09-25, retornos **semanales**, Sharpe con Rf=0% y
+Rf=0.216%, frontera eficiente, 3 portafolios (mínimo riesgo, mínimo
+riesgo a retorno objetivo, máximo Sharpe) y un cuarto portafolio con
+restricción de peso máximo 25% por activo.
+
+## Configuración inicial
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, xts, quantmod, TTR,
+               stats, zoo, PerformanceAnalytics, PortfolioAnalytics, ROI,
+               ROI.plugin.quadprog, ROI.plugin.glpk, readr, scales)
+options(scipen = 999)
+```
+
+------------------------------------------------------------------------
+
+# Parte 0 — Descarga de precios y retornos semanales
+
+```{r reconstruccion}
+companies <- read_csv(file = "https://raw.githubusercontent.com/salas317/Data/main/NASDAQ_NYSE.csv",
+                      show_col_types = FALSE)[1:20,]
+
+activos <- companies$`Ticker Symbol` %>% gsub(pattern = "BRK.A", x = ., replacement = "BRK-A")
+
+precios <- quantmod::getSymbols(activos, src = 'yahoo',
+                                from = "2022-12-31",
+                                to = "2026-09-25",
+                                periodicity = "daily",
+                                auto.assign = T,
+                                warnings = F) %>%
+  purrr::map(~quantmod::Ad(get(.))) %>%
+  purrr::reduce(merge.xts) %>%
+  `colnames<-`(activos)
+
+retornos_semana <- precios %>%
+  xts::to.weekly(OHLC = FALSE) %>%
+  log() %>%
+  diff() %>%
+  na.omit()
+
+tail(retornos_semana[, 1:5])
+```
+
+**Hallazgo real (calidad de dato)**: la primera versión de este código
+usaba `TTR::ROC(type = "continuous", na.pad = FALSE)` para calcular los
+retornos — y producía un valor absurdo en la primera fila de **BRK-A**
+(un retorno semanal de +603%, matemáticamente imposible). Los precios
+diarios crudos de Yahoo para BRK-A son perfectamente normales en esa
+fecha; el problema es un bug real de `TTR::ROC()` al aplicarse sobre una
+matriz xts ancha (20 columnas) con estas librerías cargadas — el mismo
+tipo de bug ya documentado en otras materias de este curso.
+`diff(log(x))` calcula exactamente el mismo retorno logarítmico y no
+tiene ese problema; se usa en su lugar. Vale la pena revisar siempre los
+extremos de una serie de retornos recién calculada antes de usarla en
+una optimización — un solo dato corrupto puede distorsionar toda la
+matriz de covarianzas.
+
+```{r resumen-tabla, echo=FALSE}
+rf_semanal <- 0.00216
+
+resumen <- data.frame(
+  activo = colnames(retornos_semana),
+  retorno_esperado = colMeans(retornos_semana),
+  sd = apply(retornos_semana, 2, sd)
+)
+resumen
+```
+
+------------------------------------------------------------------------
+
+# 1 — Sharpe Ratio por acción, Rf = 0.000%
+
+```{r p1}
+sharpe_rf0 <- PerformanceAnalytics::SharpeRatio(R = retornos_semana, Rf = 0, FUN = "StdDev")
+sharpe_rf0
+```
+
+**Respuesta:** con retorno libre de riesgo de 0%, la acción con mejor
+prima por unidad de riesgo es **NVDA**
+(`r round(sharpe_rf0["Sharpe Ratio (Rf=0%, p=95%):", "NVDA"], 3)`),
+seguida de **GOOGL**
+(`r round(sharpe_rf0["Sharpe Ratio (Rf=0%, p=95%):", "GOOGL"], 3)`) y
+**MU**
+(`r round(sharpe_rf0["Sharpe Ratio (Rf=0%, p=95%):", "MU"], 3)`) — todas
+por encima de 0.16. La más débil es **ABBV**
+(`r round(sharpe_rf0["Sharpe Ratio (Rf=0%, p=95%):", "ABBV"], 3)`), pero
+ninguna de las 20 sale negativa con Rf=0% en este periodo.
+
+------------------------------------------------------------------------
+
+# 2 — Sharpe Ratio por acción, Rf = 0.216%
+
+```{r p2}
+sharpe_rf1 <- PerformanceAnalytics::SharpeRatio(R = retornos_semana, Rf = rf_semanal, FUN = "StdDev")
+sharpe_rf1
+```
+
+**Respuesta:** al subir la tasa libre de riesgo a 0.216% semanal, todos
+los Sharpe bajan (como es de esperar — se le resta más al numerador) y
+el ranking cambia un poco en el medio de la tabla, pero **NVDA sigue
+siendo la mejor**
+(`r round(sharpe_rf1["Sharpe Ratio (Rf=0.2%, p=95%):", "NVDA"], 3)`).
+La caída es proporcionalmente mayor en las acciones de menor retorno
+esperado — **BRK-A**, por ejemplo, cae de
+`r round(sharpe_rf0["Sharpe Ratio (Rf=0%, p=95%):", "BRK-A"], 3)` a
+`r round(sharpe_rf1["Sharpe Ratio (Rf=0.2%, p=95%):", "BRK-A"], 3)` —
+porque su retorno esperado ya era bajo, así que restarle la tasa libre
+de riesgo consume una fracción mayor del numerador.
+
+------------------------------------------------------------------------
+
+# 3 — Portafolio de media-varianza (full investment, long only, sin activo libre de riesgo)
+
+```{r spec-base}
+init.portfolio <- PortfolioAnalytics::portfolio.spec(assets = activos, name = "Portafolio MV")
+init.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio, type = "full_investment")
+init.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio, type = "long_only")
+```
+
+## 3.1 — Frontera eficiente
+
+```{r p31}
+frontera <- PortfolioAnalytics::create.EfficientFrontier(R = retornos_semana,
+                                                         portfolio = init.portfolio,
+                                                         type = 'mean-StdDev',
+                                                         n.portfolios = 100)
+
+PortfolioAnalytics::chart.EfficientFrontier(frontera,
+                                            match.col = 'StdDev',
+                                            type = 'l',
+                                            rf = NULL,
+                                            main = "Frontera eficiente",
+                                            cex.assets = 0.7)
+```
+
+## 3.2 — Frontera eficiente con Rf = 0.216%
+
+```{r p32}
+PortfolioAnalytics::chart.EfficientFrontier(frontera,
+                                            match.col = 'StdDev',
+                                            type = 'l',
+                                            rf = rf_semanal,
+                                            main = "Frontera eficiente con activo libre de riesgo",
+                                            cex.assets = 0.7)
+```
+
+## 3.3 — Portafolio de mínimo riesgo
+
+```{r p33}
+risk.portfolio <- PortfolioAnalytics::add.objective(portfolio = init.portfolio, type = "risk", name = "StdDev")
+
+opt.minrisk <- PortfolioAnalytics::optimize.portfolio(R = retornos_semana,
+                                                      portfolio = risk.portfolio,
+                                                      optimize_method = "ROI",
+                                                      trace = T)
+opt.minrisk
+
+sharpe_minrisk <- SharpeRatio(R = retornos_semana, Rf = rf_semanal, weights = opt.minrisk$weights, FUN = "StdDev")
+sharpe_minrisk
+
+PortfolioAnalytics::chart.RiskReward(opt.minrisk, risk.col = "StdDev", return.col = "mean",
+                                     chart.assets = TRUE, rp = F, main = "Minimizacion del riesgo")
+```
+
+> "a. ¿Cómo está compuesto? b. Calcule el ratio de Sharpe para este
+> portafolio. ¿Qué se puede decir en comparación con las acciones
+> individuales?"
+
+**Respuesta:** el portafolio de mínimo riesgo concentra su peso en
+**BRK-A** (`r scales::label_percent(accuracy=0.1)(opt.minrisk$weights["BRK-A"])`,
+la acción individual con menor desviación estándar), **JNJ**
+(`r scales::label_percent(accuracy=0.1)(opt.minrisk$weights["JNJ"])`) y
+**WMT** (`r scales::label_percent(accuracy=0.1)(opt.minrisk$weights["WMT"])`)
+— todas de baja volatilidad individual — con el resto del capital
+repartido en pedazos más chicos entre las demás. Su desviación estándar
+semanal es
+**`r scales::label_percent(accuracy=0.01)(opt.minrisk$objective_measures$StdDev)`**,
+**por debajo de cualquiera de las 20 acciones individuales** (la más
+estable, BRK-A, tenía
+`r scales::label_percent(accuracy=0.01)(resumen$sd[resumen$activo=="BRK-A"])`)
+— el efecto de diversificación funcionando incluso al combinar activos
+ya de por sí poco volátiles. Su Sharpe
+(`r round(as.numeric(sharpe_minrisk), 3)`) es más bajo que el de NVDA o
+GOOGL solas, porque minimizar riesgo no busca maximizar retorno — es
+consistente con estar en el extremo izquierdo de la frontera eficiente.
+
+## 3.4 — Portafolio de mínimo riesgo a retorno objetivo (0.5% semanal)
+
+```{r p34}
+retorno_objetivo <- 0.005 # 0.5% semanal, elegido por nosotros
+
+risk.target.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio, type = "return",
+                                                             return_target = retorno_objetivo)
+risk.target.portfolio <- PortfolioAnalytics::add.objective(portfolio = risk.target.portfolio, type = "risk", name = "StdDev")
+
+opt.target <- PortfolioAnalytics::optimize.portfolio(R = retornos_semana,
+                                                     portfolio = risk.target.portfolio,
+                                                     optimize_method = "ROI",
+                                                     trace = T)
+opt.target
+
+sharpe_target <- SharpeRatio(R = retornos_semana, Rf = rf_semanal, weights = opt.target$weights, FUN = "StdDev")
+sharpe_target
+
+PortfolioAnalytics::chart.RiskReward(opt.target, risk.col = "StdDev", return.col = "mean",
+                                     chart.assets = TRUE, rp = F, main = "Minimizacion del riesgo, retorno objetivo")
+```
+
+> "a. ¿Cómo está compuesto? b. Calcule el ratio de Sharpe. ¿Qué se puede
+> decir en comparación con las acciones. c. Su posición en comparación
+> con las acciones."
+
+**Respuesta:** elegimos un retorno objetivo del **0.5% semanal**
+(≈29% anualizado de forma simple, un nivel intermedio y alcanzable dado
+que NVDA sola ya promedia
+`r scales::label_percent(accuracy=0.01)(resumen$retorno_esperado[resumen$activo=="NVDA"])`
+semanal). El portafolio resultante concentra en **BRK-A**
+(`r scales::label_percent(accuracy=0.1)(opt.target$weights["BRK-A"])`),
+**JNJ** (`r scales::label_percent(accuracy=0.1)(opt.target$weights["JNJ"])`)
+y **WMT**
+(`r scales::label_percent(accuracy=0.1)(opt.target$weights["WMT"])`), con
+NVDA y GOOGL entrando ya con un peso notable
+(`r scales::label_percent(accuracy=0.1)(opt.target$weights["NVDA"])` y
+`r scales::label_percent(accuracy=0.1)(opt.target$weights["GOOGL"])`
+respectivamente) para poder alcanzar el retorno exigido. Su Sharpe
+(`r round(as.numeric(sharpe_target), 3)`) es mayor que el del portafolio
+de mínimo riesgo — tiene sentido, exige más retorno y el optimizador
+encuentra la combinación de menor riesgo posible para lograrlo, mejor
+que cualquier acción individual de retorno comparable con menos riesgo.
+Es un punto intermedio de la frontera eficiente, entre el extremo de
+mínima varianza y el portafolio tangente.
+
+## 3.5 — Portafolio que maximiza el Sharpe Ratio
+
+```{r p35}
+sr.portfolio <- PortfolioAnalytics::add.objective(portfolio = init.portfolio, type = "risk", name = "StdDev")
+sr.portfolio <- PortfolioAnalytics::add.objective(portfolio = sr.portfolio, type = "return", name = "mean")
+
+opt.sr <- PortfolioAnalytics::optimize.portfolio(R = retornos_semana,
+                                                 portfolio = sr.portfolio,
+                                                 optimize_method = "ROI",
+                                                 trace = T,
+                                                 maxSR = TRUE)
+opt.sr
+
+sharpe_sr <- SharpeRatio(R = retornos_semana, Rf = rf_semanal, weights = opt.sr$weights, FUN = "StdDev")
+sharpe_sr
+
+PortfolioAnalytics::chart.RiskReward(opt.sr, risk.col = "StdDev", return.col = "mean",
+                                     chart.assets = TRUE, rp = F, main = "Portafolio que maximiza el Sharpe")
+
+PortfolioAnalytics::chart.EfficientFrontier(opt.sr,
+                                            match.col = 'StdDev',
+                                            main = "Frontera eficiente con portafolio optimo",
+                                            cex.assets = 0.7,
+                                            tangent.line = T,
+                                            n.portfolios = 100,
+                                            rf = rf_semanal)
+```
+
+> "a. ¿Cómo está compuesto? b. Calcule el ratio de Sharpe. ¿Qué se puede
+> decir en comparación con las acciones. c. Su posición en la frontera
+> eficiente."
+
+**Respuesta:** el portafolio de máximo Sharpe reparte el capital de
+forma bastante más diversificada que los dos anteriores: **JNJ**
+(`r scales::label_percent(accuracy=0.1)(opt.sr$weights["JNJ"])`), **WMT**
+(`r scales::label_percent(accuracy=0.1)(opt.sr$weights["WMT"])`), **NVDA**
+(`r scales::label_percent(accuracy=0.1)(opt.sr$weights["NVDA"])`) y
+**GOOGL**
+(`r scales::label_percent(accuracy=0.1)(opt.sr$weights["GOOGL"])`) como
+las posiciones más grandes, con el resto repartido en pedazos menores
+entre 8-9 acciones más. Su Sharpe
+(`r round(as.numeric(sharpe_sr), 3)`) es, por construcción,
+**el más alto de los tres portafolios** — mayor que el de cualquier
+acción individual (NVDA sola daba
+`r round(sharpe_rf1["Sharpe Ratio (Rf=0.2%, p=95%):", "NVDA"], 3)`
+con la misma tasa libre de riesgo). Es exactamente el **portafolio
+tangente**: el punto donde la línea recta desde el activo libre de
+riesgo toca la frontera eficiente — visible en el gráfico anterior.
+
+## 3.6 — Comparación de los 3 portafolios
+
+```{r p36}
+tabla_3 <- data.frame(
+  portafolio = c("Minimo riesgo", "Minimo riesgo (retorno objetivo)", "Maximo Sharpe"),
+  HHI = c(HHI(weights = opt.minrisk$weights), HHI(weights = opt.target$weights), HHI(weights = opt.sr$weights)),
+  Sharpe = c(as.numeric(sharpe_minrisk), as.numeric(sharpe_target), as.numeric(sharpe_sr))
+)
+tabla_3
+```
+
+> "a. La diversificación, por medio del índice de Herfindahl Hirschman.
+> b. La prima de retorno por unidad de riesgo."
+
+**Respuesta:** el **HHI baja monótonamente** a medida que el portafolio
+se acerca al máximo Sharpe
+(`r round(HHI(weights = opt.minrisk$weights), 3)` →
+`r round(HHI(weights = opt.target$weights), 3)` →
+`r round(HHI(weights = opt.sr$weights), 3)`) — el portafolio de mínimo
+riesgo es el más concentrado (natural, ya que solo le importa minimizar
+varianza, y BRK-A por sí sola ya es muy poco riesgosa) y el de máximo
+Sharpe es el más diversificado de los tres. El **Sharpe sube en la misma
+dirección** — de los tres, el que mejor prima de retorno por unidad de
+riesgo ofrece es, sin sorpresa, el que fue construido explícitamente
+para maximizarlo.
+
+------------------------------------------------------------------------
+
+# 4 — Portafolio con restricción de peso máximo 25% por activo
+
+```{r p4}
+box.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio, type = "box", min = 0, max = 0.25)
+box.portfolio <- PortfolioAnalytics::add.objective(portfolio = box.portfolio, type = "risk", name = "StdDev")
+box.portfolio <- PortfolioAnalytics::add.objective(portfolio = box.portfolio, type = "return", name = "mean")
+
+opt.box <- PortfolioAnalytics::optimize.portfolio(R = retornos_semana,
+                                                  portfolio = box.portfolio,
+                                                  optimize_method = "ROI",
+                                                  trace = T,
+                                                  maxSR = TRUE)
+opt.box
+
+sharpe_box <- SharpeRatio(R = retornos_semana, Rf = rf_semanal, weights = opt.box$weights, FUN = "StdDev")
+sharpe_box
+
+PortfolioAnalytics::chart.EfficientFrontier(opt.box,
+                                            match.col = 'StdDev',
+                                            main = "Frontera eficiente - portafolio con limite de 25% por activo",
+                                            cex.assets = 0.7,
+                                            tangent.line = T,
+                                            n.portfolios = 100,
+                                            rf = rf_semanal)
+
+chart.Weights(opt.box, plot.type = "barplot")
+```
+
+> "a. Su posición en la frontera eficiente. b. Los pesos del portafolio
+> óptimo. c. El ratio de Sharpe, usando la desviación estándar. Compare
+> con los portafolios obtenidos en los puntos 3."
+
+**Respuesta:** con el límite del 25%, el peso de **JNJ** baja de
+`r scales::label_percent(accuracy=0.1)(opt.sr$weights["JNJ"])` (sin
+restricción) a exactamente
+**`r scales::label_percent(accuracy=0.1)(opt.box$weights["JNJ"])`** — la
+restricción sí llega a activarse, aunque por poco (era la única posición
+por encima del 25% en el portafolio sin restringir). El resto de los
+pesos se ajusta apenas para compensar. El Sharpe resultante
+(`r round(as.numeric(sharpe_box), 3)`) es
+**prácticamente idéntico** al del máximo Sharpe sin restricción
+(`r round(as.numeric(sharpe_sr), 3)`) — tiene sentido: como la
+única posición que violaba el límite lo hacía por muy poco, el costo de
+imponer la restricción es casi nulo en este caso. Sigue estando sobre
+la frontera eficiente, apenas a la derecha del punto tangente óptimo sin
+restringir.
