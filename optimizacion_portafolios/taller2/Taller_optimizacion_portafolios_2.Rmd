@@ -3,9 +3,7 @@ title: "Taller Optimización de portafolios (TO 2026-2)"
 output: html_document
 ---
 
-Resuelve el **"Taller Optimización de portafolios"** real (TO 2026-2, septiembre 2026): 25 acciones de elección propia, precios diarios 2022-12-31 a 2026-09-30, retornos **semanales**, Sharpe con Rf=0% y Rf=0.216%, un portafolio **media-pérdida esperada (ES/CVaR al 5%)** con 3 variantes (mínimo riesgo, mínimo riesgo a retorno objetivo, máximo Sharpe) y su comparación, un portafolio **media-varianza con pesos entre -5% y 100%** repartido en 4 grupos sectoriales con topes de grupo, y una comparación histórica mensual (rebalanceo mensual) entre el portafolio de máximo Sharpe (ES) y el portafolio con grupos.
-
-**Nota sobre el enunciado**: el punto 5 pide los retornos históricos de "los portafolios de los puntos 3.5, 4.5 y 5" — el punto 4 no tiene un subpunto 4.5 (solo a-d) y "5" es el mismo punto donde aparece la instrucción, así que es una errata del enunciado. Se interpreta como: comparar el portafolio de máximo Sharpe del esquema media-ES (punto 3.5) contra el portafolio óptimo del punto 4 (media-varianza con grupos) — son los dos portafolios "finales" construidos en el taller.
+Resuelve el **"Taller Optimización de portafolios"** real (TO 2026-2, octubre 2026): 25 acciones de elección propia, precios diarios 2022-12-31 a 2026-09-30, retornos **semanales**, Sharpe con Rf=0% y Rf=0.216%, un portafolio **media-pérdida esperada (ES/CVaR al 5%)** con 3 variantes (mínimo riesgo, mínimo riesgo a retorno objetivo, máximo Sharpe) y su comparación, un portafolio **media-varianza con pesos entre -5% y 100%** repartido en 4 grupos sectoriales con topes de grupo, y una comparación histórica con retornos **semanales** de los portafolios (rebalanceo mensual) entre el portafolio de máximo Sharpe (ES) y el portafolio con grupos.
 
 ## Configuración inicial
 
@@ -294,81 +292,75 @@ tabla_4
 
 **Respuesta d.** La suma de valores absolutos de los pesos es 1,79: posiciones largas por 139,6% del capital y cortas por 39,6%. Es decir, se toma una exposición bruta de 1,79 veces el capital (79% por encima del capital invertido). Lo considero **moderado**: está por debajo de 2×, y el límite de −5% por acción y −10% por grupo impide un apalancamiento mayor, pero no es despreciable.
 
-## 5 — Comparación histórica mensual: portafolio 3.5 (ES) vs. portafolio 4 (grupos)
+## 5 — Comparación histórica semanal: portafolio 3.5 (ES) vs. portafolio 4 (grupos)
 
-Retornos mensuales históricos con rebalanceo mensual, para los pesos óptimos de 3.5 y de 4.
+Retornos históricos **semanales** de los portafolios 3.5 y 4 (pesos óptimos de cada uno), **rebalanceados mensualmente** (los pesos se reajustan al inicio de cada mes y se dejan derivar durante las semanas del mes). Ventana móvil de un año = 52 semanas.
 
 ```{r}
-retornos_mes <- precios %>%
-  xts::to.monthly(OHLC = FALSE) %>%
-  log() %>%
-  diff() %>%
-  na.omit()
-
 w35 <- opt.sr.es$weights
 w4 <- opt.box.g$weights
 
-pf35_mensual <- PerformanceAnalytics::Return.portfolio(R = retornos_mes, weights = w35, rebalance_on = "months")
-pf4_mensual <- PerformanceAnalytics::Return.portfolio(R = retornos_mes, weights = w4, rebalance_on = "months")
+pf35_sem <- PerformanceAnalytics::Return.portfolio(R = retornos_semana, weights = w35, rebalance_on = "months")
+pf4_sem <- PerformanceAnalytics::Return.portfolio(R = retornos_semana, weights = w4, rebalance_on = "months")
 ```
 
 **a. Histograma de los retornos**
 
 ```{r}
 par(mfrow = c(1, 2))
-hist(pf35_mensual, main = "Portafolio 3.5 (ES)", xlab = "Retorno mensual", col = "steelblue", breaks = 15)
-hist(pf4_mensual, main = "Portafolio 4 (grupos)", xlab = "Retorno mensual", col = "darkorange", breaks = 15)
+hist(pf35_sem, main = "Portafolio 3.5 (ES)", xlab = "Retorno semanal", col = "steelblue", breaks = 20)
+hist(pf4_sem, main = "Portafolio 4 (grupos)", xlab = "Retorno semanal", col = "darkorange", breaks = 20)
 par(mfrow = c(1, 1))
 ```
 
-**Respuesta a.** Se calcularon 44 retornos mensuales con rebalanceo mensual. El portafolio 3.5 va de −7,10% a +11,59% con media de 2,76% mensual. El portafolio 4 va de −6,18% a +10,26% con media de 3,05%. Los dos histogramas son parecidos; el portafolio 4 tiene mayor retorno medio y un rango algo más estrecho.
+**Respuesta a.** Se calcularon 195 retornos semanales con rebalanceo mensual. El portafolio 3.5 va de −8,35% a +6,94% con media de 0,65% semanal. El portafolio 4 va de −8,86% a +6,20% con media de 0,71%. Los dos histogramas son parecidos; el del portafolio 4 tiene más masa en la cola izquierda y un retorno medio algo mayor.
 
 
 **b. Desviación estándar de ventana móvil de 1 año, c. asimetría histórica, d. asimetría de ventana móvil, e. exceso de curtosis histórico, f. exceso de curtosis de ventana móvil**
 
 ```{r}
-sd_pf35 <- sd(pf35_mensual); sd_pf4 <- sd(pf4_mensual)
-skew_pf35 <- PerformanceAnalytics::skewness(pf35_mensual); skew_pf4 <- PerformanceAnalytics::skewness(pf4_mensual)
-kurt_pf35 <- PerformanceAnalytics::kurtosis(pf35_mensual, method = "excess"); kurt_pf4 <- PerformanceAnalytics::kurtosis(pf4_mensual, method = "excess")
+sd_pf35 <- sd(pf35_sem); sd_pf4 <- sd(pf4_sem)
+skew_pf35 <- PerformanceAnalytics::skewness(pf35_sem); skew_pf4 <- PerformanceAnalytics::skewness(pf4_sem)
+kurt_pf35 <- PerformanceAnalytics::kurtosis(pf35_sem, method = "excess"); kurt_pf4 <- PerformanceAnalytics::kurtosis(pf4_sem, method = "excess")
 
 tabla_5 <- data.frame(
   portafolio = c("3.5 (ES)", "4 (grupos)"),
-  SD_mensual = c(sd_pf35, sd_pf4),
+  SD_semanal = c(sd_pf35, sd_pf4),
   Asimetria = c(skew_pf35, skew_pf4),
   Curtosis_exceso = c(kurt_pf35, kurt_pf4)
 )
 tabla_5
 
-roll_sd_35 <- zoo::rollapply(pf35_mensual, width = 12, FUN = sd, align = "right")
-roll_sd_4 <- zoo::rollapply(pf4_mensual, width = 12, FUN = sd, align = "right")
-roll_skew_35 <- zoo::rollapply(pf35_mensual, width = 12, FUN = PerformanceAnalytics::skewness, align = "right")
-roll_skew_4 <- zoo::rollapply(pf4_mensual, width = 12, FUN = PerformanceAnalytics::skewness, align = "right")
-roll_kurt_35 <- zoo::rollapply(pf35_mensual, width = 12, FUN = function(x) PerformanceAnalytics::kurtosis(x, method = "excess"), align = "right")
-roll_kurt_4 <- zoo::rollapply(pf4_mensual, width = 12, FUN = function(x) PerformanceAnalytics::kurtosis(x, method = "excess"), align = "right")
+roll_sd_35 <- zoo::rollapply(pf35_sem, width = 52, FUN = sd, align = "right")
+roll_sd_4 <- zoo::rollapply(pf4_sem, width = 52, FUN = sd, align = "right")
+roll_skew_35 <- zoo::rollapply(pf35_sem, width = 52, FUN = PerformanceAnalytics::skewness, align = "right")
+roll_skew_4 <- zoo::rollapply(pf4_sem, width = 52, FUN = PerformanceAnalytics::skewness, align = "right")
+roll_kurt_35 <- zoo::rollapply(pf35_sem, width = 52, FUN = function(x) PerformanceAnalytics::kurtosis(x, method = "excess"), align = "right")
+roll_kurt_4 <- zoo::rollapply(pf4_sem, width = 52, FUN = function(x) PerformanceAnalytics::kurtosis(x, method = "excess"), align = "right")
 
-plot(roll_sd_35, main = "SD ventana móvil 12 meses", ylim = range(c(roll_sd_35, roll_sd_4), na.rm = T), col = "steelblue")
+plot(roll_sd_35, main = "SD ventana móvil 52 semanas", ylim = range(c(roll_sd_35, roll_sd_4), na.rm = T), col = "steelblue")
 lines(roll_sd_4, col = "darkorange")
 legend("topright", legend = c("3.5 (ES)", "4 (grupos)"), col = c("steelblue", "darkorange"), lty = 1)
 ```
 
-**Respuesta b.** La desviación estándar mensual histórica es casi igual en los dos (3,98% el 3.5 y 3,99% el 4). En ventana móvil de 12 meses, el 3.5 oscila entre 3,26% y 4,36% (promedio 4,00%) y el 4 entre 3,48% y 5,22% (promedio 4,20%). El portafolio 4 tiene picos de riesgo más altos.
+**Respuesta b.** La desviación estándar semanal histórica es 2,15% para el 3.5 y 2,01% para el 4. En ventana móvil de 52 semanas, el 3.5 oscila entre 1,75% y 2,71% (promedio 2,18%) y el 4 entre 1,57% y 2,57% (promedio 2,06%). El portafolio 4 es menos volátil en todo el histórico, coherente con que su objetivo es la desviación estándar.
 
-**Respuesta c.** Asimetría histórica: −0,268 para el 3.5 y −0,501 para el 4. Ambas son negativas (más probabilidad de pérdidas extremas que de ganancias extremas) y la del portafolio 4 es casi el doble.
+**Respuesta c.** Asimetría histórica: −0,166 para el 3.5 y −0,679 para el 4. Ambas son negativas, pero la del portafolio 4 es cuatro veces mayor: tiene más probabilidad de pérdidas extremas que de ganancias extremas.
 
-**Respuesta d.** Asimetría en ventana móvil de 12 meses: promedio −0,52 para el 3.5 (rango −1,25 a 0,53) y −0,66 para el 4 (rango −1,79 a 0,23). El portafolio 4 es más asimétrico a la izquierda casi todo el tiempo.
+**Respuesta d.** Asimetría en ventana móvil de 52 semanas: promedio −0,13 para el 3.5 (rango −0,67 a 0,49) y −0,64 para el 4 (rango −1,31 a −0,01). La del 3.5 llega a ser positiva en algunas ventanas; la del 4 es negativa en todas.
 
-**Respuesta e.** Exceso de curtosis histórico: −0,246 para el 3.5 y −0,293 para el 4. Ambos son ligeramente negativos (colas algo más livianas que la normal) y prácticamente iguales.
+**Respuesta e.** Exceso de curtosis histórico: 1,17 para el 3.5 y 2,37 para el 4. Ambos son positivos (colas más pesadas que la normal) y el del portafolio 4 es el doble.
 
-**Respuesta f.** Exceso de curtosis en ventana móvil: promedio −0,20 para el 3.5 (rango −1,32 a 0,91) y −0,13 para el 4 (rango −1,50 a 2,82). El portafolio 4 es más inestable: en algunas ventanas llega a colas bastante pesadas (2,82), mientras que el 3.5 nunca supera 0,91.
+**Respuesta f.** Exceso de curtosis en ventana móvil de 52 semanas: promedio 0,77 para el 3.5 (rango −0,63 a 3,17) y 1,63 para el 4 (rango 0,03 a 5,51). El portafolio 4 tiene colas más pesadas en casi todas las ventanas.
 
 
 **g. Pérdida esperada histórica en el 1% de los casos**
 
 ```{r}
-es_pf35 <- PerformanceAnalytics::ES(pf35_mensual, p = 0.99, method = "historical")
-es_pf4 <- PerformanceAnalytics::ES(pf4_mensual, p = 0.99, method = "historical")
+es_pf35 <- PerformanceAnalytics::ES(pf35_sem, p = 0.99, method = "historical")
+es_pf4 <- PerformanceAnalytics::ES(pf4_sem, p = 0.99, method = "historical")
 tabla_5b <- data.frame(portafolio = c("3.5 (ES)", "4 (grupos)"), ES_1pct = c(as.numeric(es_pf35), as.numeric(es_pf4)))
 tabla_5b
 ```
 
-**Respuesta g.** La pérdida esperada histórica al 1% es −7,10% mensual para el portafolio 3.5 y −6,18% para el portafolio 4. Con 44 meses el 1% de los casos equivale a un solo mes (el peor), así que este número es muy ruidoso. En esta muestra el portafolio 4 tuvo un peor mes menos severo.
+**Respuesta g.** La pérdida esperada histórica al 1% es −6,69% semanal para el portafolio 3.5 y −7,14% para el portafolio 4. Con 195 semanas el 1% son solo 2 observaciones, así que la cifra es ruidosa. Aun así coincide con la lectura de asimetría y curtosis: el portafolio 4 tiene la cola de pérdidas más severa pese a su menor desviación estándar.
