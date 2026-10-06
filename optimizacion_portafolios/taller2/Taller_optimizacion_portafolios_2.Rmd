@@ -58,7 +58,7 @@ sharpe_rf0 <- PerformanceAnalytics::SharpeRatio(R = retornos_semana, Rf = 0, FUN
 sharpe_rf0
 ```
 
-**Respuesta**: con retorno libre de riesgo de 0%, las acciones con mejor prima por unidad de riesgo son las que combinan alto retorno esperado con volatilidad moderada — típicamente las de semiconductores/tecnología de mayor crecimiento del periodo. Las más débiles son las de consumo defensivo/energía, con retorno esperado bajo en este periodo, aunque ninguna sale muy negativa con Rf=0%.
+**Respuesta**: con Rf = 0% las 25 acciones tienen Sharpe positivo. Los más altos son NVDA (0,230), MU (0,188) y META (0,169); los más bajos, ORCL (0,043), CVX (0,048) y BAC (0,075).
 
 ## 2 — Sharpe Ratio por acción, Rf = 0.216%
 
@@ -68,7 +68,7 @@ sharpe_rf1 <- PerformanceAnalytics::SharpeRatio(R = retornos_semana, Rf = rf_sem
 sharpe_rf1
 ```
 
-**Respuesta**: al subir la tasa libre de riesgo a 0.216% semanal, todos los Sharpe bajan (se le resta más al numerador) — la caída es proporcionalmente mayor en las acciones de menor retorno esperado, porque restarles la tasa libre de riesgo consume una fracción mayor de su numerador. El ranking relativo entre las acciones de mejor desempeño se mantiene parecido.
+**Respuesta**: al subir Rf a 0,216% semanal todos los Sharpe bajan, porque se resta más al numerador. El orden de las mejores casi no cambia (NVDA 0,195, MU 0,161, LRCX 0,133), pero las de menor retorno esperado caen mucho en proporción: CVX pasa a negativo (−0,019) y MA, BRK-A y ORCL quedan cerca de cero. Con Rf = 0,216% solo 24 de las 25 acciones tienen Sharpe positivo.
 
 ## 3 — Portafolio de media-pérdida esperada (ES al 5%)
 
@@ -123,9 +123,13 @@ PortfolioAnalytics::chart.RiskReward(opt.minrisk.es, risk.col = "ES", return.col
                                      chart.assets = TRUE, rp = F, main = "Minimizacion del riesgo (ES)")
 ```
 
-**a. ¿Cómo está compuesto? b. Sharpe, comparado con las acciones individuales**
+**a. ¿Cómo está compuesto?**
 
-**Respuesta**: el portafolio de mínimo ES concentra su peso en las acciones de menor volatilidad individual (financieras y consumo defensivo, con pesos relevantes también en una de las de mayor capitalización), repartiendo el resto en pedazos pequeños entre varias acciones más — el resto queda en cero. Su Sharpe es más bajo que el de las mejores acciones individuales solas, porque minimizar ES no busca maximizar retorno — es consistente con estar en el extremo izquierdo de la frontera eficiente.
+**Respuesta a.** El portafolio de mínimo ES (ES ≈ 2,63% semanal) usa solo 8 de las 25 acciones: JNJ 28,7%, V 19,6%, BRK-A 19,0%, MSFT 15,6%, WMT 11,6%, AMD 2,0%, LRCX 2,0% y COST 1,6%. Las otras 17 quedan en cero. Se apoya en acciones de baja volatilidad (JNJ, V, BRK-A, WMT) más MSFT.
+
+**b. Ratio de Sharpe y comparación con las acciones individuales**
+
+**Respuesta b.** Su Sharpe es 0,0795 (Rf = 0,216%). Es bajo frente a las mejores acciones (NVDA 0,195, MU 0,161) y superior al de unas 16 de las 25. Aun así, su desviación semanal (1,53%) es menor que la de cualquier acción individual (la menor es BRK-A, 2,13%): es el efecto de la diversificación. Minimiza el riesgo sin buscar retorno, por eso queda en el extremo izquierdo de la frontera.
 
 ### 3.4 — Portafolio de mínimo riesgo (ES), retorno objetivo
 
@@ -146,9 +150,17 @@ PortfolioAnalytics::chart.RiskReward(opt.target.es, risk.col = "ES", return.col 
                                      chart.assets = TRUE, rp = F, main = "Minimizacion ES, retorno objetivo")
 ```
 
-**a. Composición. b. Sharpe. c. Posición en la frontera**
+**a. ¿Cómo está compuesto?**
 
-**Respuesta**: elegimos un retorno objetivo del 0.5% semanal (≈29% anualizado de forma simple), un nivel intermedio y alcanzable dado que las mejores acciones individuales ya superan 1% semanal en este periodo. El portafolio resultante exige entrar con pesos notables en acciones de mayor retorno esperado (varias tecnológicas), mientras sigue apoyándose en las de baja volatilidad para controlar el ES. Su Sharpe es mayor que el del portafolio de mínimo riesgo — tiene sentido, exige más retorno y el optimizador encuentra la combinación de menor ES posible para lograrlo. Es un punto intermedio de la frontera eficiente, entre el extremo de mínimo riesgo y el portafolio tangente.
+**Respuesta a.** Se eligió un retorno objetivo de 0,5% semanal (≈26% anual simple), intermedio entre el retorno del portafolio de mínimo riesgo (0,34%) y el del máximo Sharpe (0,65%). El portafolio usa 11 acciones: JNJ 36,9%, WMT 20,8%, MSFT 13,9%, AMD 6,9%, NVDA 5,2%, BRK-A 4,7%, GOOGL 4,4%, MU 2,3%, META 2,1%, V 2,0% y CSCO 0,8%. Para subir el retorno incorpora tecnológicas (AMD, NVDA, GOOGL, MU, META) y mantiene JNJ y WMT para controlar el ES (≈3,02% semanal).
+
+**b. Ratio de Sharpe y comparación con las acciones**
+
+**Respuesta b.** Su Sharpe es 0,1615, el doble que el del mínimo riesgo (0,0795). Solo NVDA (0,195) lo supera; MU (0,161) queda prácticamente igual. Supera al resto de las acciones individuales, con una desviación semanal de 1,76%.
+
+**c. Posición en la frontera eficiente**
+
+**Respuesta c.** Es un punto intermedio de la frontera: a la derecha del portafolio de mínimo riesgo (más retorno y más ES) y a la izquierda del portafolio tangente (máximo Sharpe).
 
 ### 3.5 — Portafolio que maximiza el Sharpe Ratio (esquema ES)
 
@@ -169,9 +181,17 @@ PortfolioAnalytics::chart.RiskReward(opt.sr.es, risk.col = "ES", return.col = "m
                                      chart.assets = TRUE, rp = F, main = "Portafolio que maximiza el Sharpe (ES)")
 ```
 
-**a. Composición. b. Sharpe. c. Posición en la frontera**
+**a. ¿Cómo está compuesto?**
 
-**Respuesta**: el portafolio de máximo Sharpe (esquema ES) reparte el capital de forma más diversificada que el de mínimo riesgo, con posiciones relevantes en varias tecnológicas de alto retorno (incluida la de mayor peso, por su combinación favorable de retorno y riesgo) junto con las defensivas que ya aportaban al portafolio anterior. Su Sharpe es, por construcción, el más alto de los tres portafolios de esta sección — mayor que el de cualquier acción individual. Es el portafolio tangente de este esquema: el punto donde la línea recta desde el activo libre de riesgo toca la frontera eficiente media-ES.
+**Respuesta a.** El portafolio de máximo Sharpe (esquema ES) usa 10 acciones: JNJ 27,4%, WMT 20,9%, GOOGL 18,1%, NVDA 13,4%, META 6,3%, AMD 4,9%, CSCO 3,8%, MU 2,0%, MSFT 2,0% y V 1,2%. Combina defensivas (JNJ, WMT) con tecnológicas de alto retorno (GOOGL, NVDA, META).
+
+**b. Ratio de Sharpe y comparación con las acciones**
+
+**Respuesta b.** Su Sharpe es 0,2015, mayor que el de todas las acciones individuales (la mejor, NVDA, 0,195). Su retorno es 0,65% semanal con desviación de 2,14%.
+
+**c. Posición en la frontera eficiente**
+
+**Respuesta c.** Es el portafolio tangente: el punto donde la recta que sale de Rf = 0,216% toca la frontera eficiente media-ES. Está en la parte alta de la frontera, con mayor retorno y mayor ES (≈3,78% semanal) que los otros dos portafolios.
 
 ### 3.6 — Comparación de los 3 portafolios (ES)
 
@@ -184,9 +204,13 @@ tabla_3 <- data.frame(
 tabla_3
 ```
 
-**a. Diversificación (HHI). b. Prima de retorno por unidad de riesgo**
+**a. Diversificación**
 
-**Respuesta**: el HHI sube a medida que el portafolio se acerca al máximo Sharpe — el de mínimo riesgo es el más concentrado (natural, solo le importa minimizar ES) y el de retorno objetivo resulta el más diversificado de los tres al repartir el capital entre más activos para alcanzar el retorno exigido sin disparar el riesgo. El Sharpe sube monótonamente de mínimo riesgo → retorno objetivo → máximo Sharpe, como era de esperar dado que cada uno exige progresivamente más retorno por unidad de riesgo asumido.
+**Respuesta a.** Con el HHI (menor = más diversificado) el portafolio más diversificado es el de máximo Sharpe (0,178, ≈5,6 acciones efectivas), seguido por el de mínimo riesgo (0,196, ≈5,1) y por último el de retorno objetivo (0,212, ≈4,7), que es el más concentrado porque carga mucho en JNJ (36,9%).
+
+**b. Prima de retorno por unidad de riesgo (Sharpe)**
+
+**Respuesta b.** El Sharpe sube de forma monótona: mínimo riesgo 0,0795 → retorno objetivo 0,1615 → máximo Sharpe 0,2015. Cada portafolio exige más retorno por unidad de riesgo que el anterior, y solo el de máximo Sharpe supera a todas las acciones individuales.
 
 ## 4 — Portafolio media-varianza con pesos entre -5% y 100%, por grupos
 
@@ -254,9 +278,21 @@ tabla_4 <- data.frame(
 tabla_4
 ```
 
-**a. Frontera eficiente. b. Pesos del portafolio óptimo. c. Sharpe, comparar con los puntos 3. d. Proporción de apalancamiento, ¿alto o bajo?**
+**a. La frontera eficiente**
 
-**Respuesta**: el optimizador usa el margen de short-selling permitido (-5% por activo) en varias de las acciones más débiles del periodo, financiando posiciones más grandes en las de mejor desempeño dentro de los topes de grupo. La suma de valores absolutos de los pesos (medida simple de apalancamiento) queda por encima de 1 (100% del capital) — hay apalancamiento, pero es **bajo**: con el límite de -5% por activo y de -10% a 60% por grupo, el optimizador no puede construir posiciones cortas grandes, así que la suma de posiciones absolutas se mantiene cerca de 1 en vez de dispararse. El Sharpe resultante es comparable al de los portafolios de la sección 3 — las restricciones de grupo limitan cuánto puede mejorar el optimizador sobre un portafolio ya razonablemente bien diversificado.
+**Respuesta a.** Las gráficas de arriba muestran la frontera eficiente con las restricciones de caja (−5% a 100% por acción) y de grupo (−10% a 60%), junto con la línea tangente trazada desde Rf = 0,216%. El portafolio óptimo es el punto de tangencia.
+
+**b. Los pesos del portafolio óptimo**
+
+**Respuesta b.** Posiciones largas: JNJ 25,1%, NVDA 18,1%, JPM 16,8%, GOOGL 16,8%, WMT 14,0%, MU 8,8%, ABBV 7,6%, COST 7,5%, BRK-A 7,4%, META 7,1%, LLY 4,9%, MSFT 2,8% y AMD 2,6%. Posiciones cortas: AVGO, V, MA, BAC y ORCL en el tope de −5% cada una, LRCX (−5,0%), INTC (−3,2%), TSLA (−2,6%), AAPL (−2,5%), CSCO (−1,0%) y CVX (−0,1%); AMZN queda en ≈0. Por grupo: Salud/Energía 37,6%, Tech 34,3%, Consumo 18,9% y Financiero 9,2%, todos dentro del rango −10% a 60%.
+
+**c. Ratio de Sharpe y comparación con el punto 3**
+
+**Respuesta c.** Su Sharpe es 0,2440, el más alto de todos: supera al de máximo Sharpe del punto 3.5 (0,2015), al de retorno objetivo (0,1615), al de mínimo riesgo (0,0795) y a la mejor acción individual (NVDA, 0,195). Mejora porque puede vender en corto las acciones más débiles y porque el riesgo es la desviación estándar, no el ES. Su retorno es 0,71% semanal con desviación de 2,01%.
+
+**d. Proporción de apalancamiento**
+
+**Respuesta d.** La suma de valores absolutos de los pesos es 1,79: posiciones largas por 139,6% del capital y cortas por 39,6%. Es decir, se toma una exposición bruta de 1,79 veces el capital (79% por encima del capital invertido). Lo considero **moderado**: está por debajo de 2×, y el límite de −5% por acción y −10% por grupo impide un apalancamiento mayor, pero no es despreciable.
 
 ## 5 — Comparación histórica mensual: portafolio 3.5 (ES) vs. portafolio 4 (grupos)
 
@@ -285,7 +321,10 @@ hist(pf4_mensual, main = "Portafolio 4 (grupos)", xlab = "Retorno mensual", col 
 par(mfrow = c(1, 1))
 ```
 
-**b-f. Desviación estándar, asimetría y curtosis, históricas y de ventana móvil de 1 año (12 meses)**
+**Respuesta a.** Se calcularon 44 retornos mensuales con rebalanceo mensual. El portafolio 3.5 va de −7,10% a +11,59% con media de 2,76% mensual. El portafolio 4 va de −6,18% a +10,26% con media de 3,05%. Los dos histogramas son parecidos; el portafolio 4 tiene mayor retorno medio y un rango algo más estrecho.
+
+
+**b. Desviación estándar de ventana móvil de 1 año, c. asimetría histórica, d. asimetría de ventana móvil, e. exceso de curtosis histórico, f. exceso de curtosis de ventana móvil**
 
 ```{r}
 sd_pf35 <- sd(pf35_mensual); sd_pf4 <- sd(pf4_mensual)
@@ -312,6 +351,17 @@ lines(roll_sd_4, col = "darkorange")
 legend("topright", legend = c("3.5 (ES)", "4 (grupos)"), col = c("steelblue", "darkorange"), lty = 1)
 ```
 
+**Respuesta b.** La desviación estándar mensual histórica es casi igual en los dos (3,98% el 3.5 y 3,99% el 4). En ventana móvil de 12 meses, el 3.5 oscila entre 3,26% y 4,36% (promedio 4,00%) y el 4 entre 3,48% y 5,22% (promedio 4,20%). El portafolio 4 tiene picos de riesgo más altos.
+
+**Respuesta c.** Asimetría histórica: −0,268 para el 3.5 y −0,501 para el 4. Ambas son negativas (más probabilidad de pérdidas extremas que de ganancias extremas) y la del portafolio 4 es casi el doble.
+
+**Respuesta d.** Asimetría en ventana móvil de 12 meses: promedio −0,52 para el 3.5 (rango −1,25 a 0,53) y −0,66 para el 4 (rango −1,79 a 0,23). El portafolio 4 es más asimétrico a la izquierda casi todo el tiempo.
+
+**Respuesta e.** Exceso de curtosis histórico: −0,246 para el 3.5 y −0,293 para el 4. Ambos son ligeramente negativos (colas algo más livianas que la normal) y prácticamente iguales.
+
+**Respuesta f.** Exceso de curtosis en ventana móvil: promedio −0,20 para el 3.5 (rango −1,32 a 0,91) y −0,13 para el 4 (rango −1,50 a 2,82). El portafolio 4 es más inestable: en algunas ventanas llega a colas bastante pesadas (2,82), mientras que el 3.5 nunca supera 0,91.
+
+
 **g. Pérdida esperada histórica en el 1% de los casos**
 
 ```{r}
@@ -321,4 +371,4 @@ tabla_5b <- data.frame(portafolio = c("3.5 (ES)", "4 (grupos)"), ES_1pct = c(as.
 tabla_5b
 ```
 
-**Respuesta (comparación)**: con rebalanceo mensual, los dos portafolios muestran una volatilidad mensual similar en el histórico completo, pero el portafolio de grupos (4) tiende a mostrar una asimetría negativa más marcada (cola de pérdidas más pesada) que el portafolio 3.5 (ES) — razonable, dado que el portafolio 4 permite posiciones cortas que, combinadas con el apalancamiento moderado, amplifican tanto las ganancias como las pérdidas frente a un portafolio puramente long-only. La desviación estándar de ventana móvil de ambos portafolios se mueve de forma parecida en el tiempo (ambos están expuestos a los mismos periodos de mercado), pero el portafolio de grupos muestra picos de riesgo algo más altos en los periodos más volátiles del histórico. La pérdida esperada histórica al 1% es consistente con esta lectura: el portafolio 4 tiene una cola de pérdida más severa que el portafolio 3.5, el costo del apalancamiento/short permitido por sus restricciones.
+**Respuesta g.** La pérdida esperada histórica al 1% es −7,10% mensual para el portafolio 3.5 y −6,18% para el portafolio 4. Con 44 meses el 1% de los casos equivale a un solo mes (el peor), así que este número es muy ruidoso. En esta muestra el portafolio 4 tuvo un peor mes menos severo.
