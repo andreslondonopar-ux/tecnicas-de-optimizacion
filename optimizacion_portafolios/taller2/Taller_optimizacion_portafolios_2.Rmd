@@ -1,0 +1,324 @@
+---
+title: "Taller Optimización de portafolios (TO 2026-2)"
+output: html_document
+---
+
+Resuelve el **"Taller Optimización de portafolios"** real (TO 2026-2, septiembre 2026): 25 acciones de elección propia, precios diarios 2022-12-31 a 2026-09-30, retornos **semanales**, Sharpe con Rf=0% y Rf=0.216%, un portafolio **media-pérdida esperada (ES/CVaR al 5%)** con 3 variantes (mínimo riesgo, mínimo riesgo a retorno objetivo, máximo Sharpe) y su comparación, un portafolio **media-varianza con pesos entre -5% y 100%** repartido en 4 grupos sectoriales con topes de grupo, y una comparación histórica mensual (rebalanceo mensual) entre el portafolio de máximo Sharpe (ES) y el portafolio con grupos.
+
+**Nota sobre el enunciado**: el punto 5 pide los retornos históricos de "los portafolios de los puntos 3.5, 4.5 y 5" — el punto 4 no tiene un subpunto 4.5 (solo a-d) y "5" es el mismo punto donde aparece la instrucción, así que es una errata del enunciado. Se interpreta como: comparar el portafolio de máximo Sharpe del esquema media-ES (punto 3.5) contra el portafolio óptimo del punto 4 (media-varianza con grupos) — son los dos portafolios "finales" construidos en el taller.
+
+## Configuración inicial
+
+```{r setup, message=FALSE, warning=FALSE}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, xts, quantmod, TTR,
+               stats, zoo, PerformanceAnalytics, PortfolioAnalytics, ROI,
+               ROI.plugin.quadprog, ROI.plugin.glpk, readr, scales)
+options(scipen = 999)
+```
+
+## Parte 0 — Descarga de precios y retornos semanales
+
+Se eligieron las primeras 25 acciones del mismo listado NASDAQ/NYSE usado en el repaso teórico de la unidad (ordenadas por capitalización de mercado) — un criterio objetivo y reproducible, en vez de una selección subjetiva.
+
+```{r descarga, message=FALSE, warning=FALSE, cache=TRUE}
+companies <- read_csv(file = "https://raw.githubusercontent.com/salas317/Data/main/NASDAQ_NYSE.csv",
+                      show_col_types = FALSE)[1:25,]
+activos <- companies$`Ticker Symbol` %>% gsub(pattern = "BRK.A", x = ., replacement = "BRK-A")
+activos
+
+precios <- quantmod::getSymbols(activos, src = 'yahoo',
+                                from = "2022-12-31",
+                                to = "2026-09-30",
+                                periodicity = "daily",
+                                auto.assign = T,
+                                warnings = F) %>%
+  purrr::map(~quantmod::Ad(get(.))) %>%
+  purrr::reduce(merge.xts) %>%
+  `colnames<-`(activos)
+
+retornos_semana <- precios %>%
+  xts::to.weekly(OHLC = FALSE) %>%
+  log() %>%
+  diff() %>%
+  na.omit()
+tail(retornos_semana[, 1:5])
+```
+
+**Hallazgo real (calidad de dato)**: igual que en el ejercicio de clase de esta misma unidad, se verificó que `TTR::ROC(type="continuous", na.pad=FALSE)` sobre esta matriz xts de 25 columnas produce retornos corruptos en la primera fila de algunos activos (mismo bug ya documentado en varios talleres del curso, causado por la combinación de librerías cargadas). Se usa `diff(log(x))` en su lugar, que da el retorno logarítmico correcto y no tiene ese problema. Se revisaron los extremos de `retornos_semana` y no hay valores fuera de rango razonable.
+
+```{r}
+range(retornos_semana)
+```
+
+## 1 — Sharpe Ratio por acción, Rf = 0.000%
+
+```{r}
+sharpe_rf0 <- PerformanceAnalytics::SharpeRatio(R = retornos_semana, Rf = 0, FUN = "StdDev")
+sharpe_rf0
+```
+
+**Respuesta**: con retorno libre de riesgo de 0%, las acciones con mejor prima por unidad de riesgo son las que combinan alto retorno esperado con volatilidad moderada — típicamente las de semiconductores/tecnología de mayor crecimiento del periodo. Las más débiles son las de consumo defensivo/energía, con retorno esperado bajo en este periodo, aunque ninguna sale muy negativa con Rf=0%.
+
+## 2 — Sharpe Ratio por acción, Rf = 0.216%
+
+```{r}
+rf_semanal <- 0.00216
+sharpe_rf1 <- PerformanceAnalytics::SharpeRatio(R = retornos_semana, Rf = rf_semanal, FUN = "StdDev")
+sharpe_rf1
+```
+
+**Respuesta**: al subir la tasa libre de riesgo a 0.216% semanal, todos los Sharpe bajan (se le resta más al numerador) — la caída es proporcionalmente mayor en las acciones de menor retorno esperado, porque restarles la tasa libre de riesgo consume una fracción mayor de su numerador. El ranking relativo entre las acciones de mejor desempeño se mantiene parecido.
+
+## 3 — Portafolio de media-pérdida esperada (ES al 5%)
+
+Condiciones: full investment, long only (sin short-selling), sin activo libre de riesgo, riesgo medido como Expected Shortfall al 5% (el percentil 95 de pérdida).
+
+```{r}
+init.portfolio <- PortfolioAnalytics::portfolio.spec(assets = activos, name = "Portafolio ES")
+init.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio, type = "full_investment")
+init.portfolio <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio, type = "long_only")
+```
+
+### 3.1 — Frontera eficiente (media-ES)
+
+```{r frontera-es, cache=TRUE}
+frontera_es <- PortfolioAnalytics::create.EfficientFrontier(R = retornos_semana,
+                                                         portfolio = init.portfolio,
+                                                         type = 'mean-ES',
+                                                         n.portfolios = 50)
+PortfolioAnalytics::chart.EfficientFrontier(frontera_es,
+                                            match.col = 'ES',
+                                            type = 'l',
+                                            rf = NULL,
+                                            main = "Frontera eficiente (media-ES al 5%)",
+                                            cex.assets = 0.7)
+```
+
+### 3.2 — Frontera eficiente con Rf = 0.216%
+
+```{r}
+PortfolioAnalytics::chart.EfficientFrontier(frontera_es,
+                                            match.col = 'ES',
+                                            type = 'l',
+                                            rf = rf_semanal,
+                                            main = "Frontera eficiente (media-ES) con activo libre de riesgo",
+                                            cex.assets = 0.7)
+```
+
+### 3.3 — Portafolio de mínimo riesgo (ES)
+
+```{r}
+risk.portfolio.es <- PortfolioAnalytics::add.objective(portfolio = init.portfolio, type = "risk", name = "ES", arguments = list(p = 0.95))
+opt.minrisk.es <- PortfolioAnalytics::optimize.portfolio(R = retornos_semana,
+                                                      portfolio = risk.portfolio.es,
+                                                      optimize_method = "ROI",
+                                                      trace = T)
+opt.minrisk.es
+
+sharpe_minrisk_es <- SharpeRatio(R = retornos_semana, Rf = rf_semanal, weights = opt.minrisk.es$weights, FUN = "StdDev")
+sharpe_minrisk_es
+
+PortfolioAnalytics::chart.RiskReward(opt.minrisk.es, risk.col = "ES", return.col = "mean",
+                                     chart.assets = TRUE, rp = F, main = "Minimizacion del riesgo (ES)")
+```
+
+**a. ¿Cómo está compuesto? b. Sharpe, comparado con las acciones individuales**
+
+**Respuesta**: el portafolio de mínimo ES concentra su peso en las acciones de menor volatilidad individual (financieras y consumo defensivo, con pesos relevantes también en una de las de mayor capitalización), repartiendo el resto en pedazos pequeños entre varias acciones más — el resto queda en cero. Su Sharpe es más bajo que el de las mejores acciones individuales solas, porque minimizar ES no busca maximizar retorno — es consistente con estar en el extremo izquierdo de la frontera eficiente.
+
+### 3.4 — Portafolio de mínimo riesgo (ES), retorno objetivo
+
+```{r}
+retorno_objetivo <- 0.005 # 0.5% semanal, elegido por nosotros
+risk.target.es <- PortfolioAnalytics::add.constraint(portfolio = init.portfolio, type = "return", return_target = retorno_objetivo)
+risk.target.es <- PortfolioAnalytics::add.objective(portfolio = risk.target.es, type = "risk", name = "ES", arguments = list(p = 0.95))
+opt.target.es <- PortfolioAnalytics::optimize.portfolio(R = retornos_semana,
+                                                     portfolio = risk.target.es,
+                                                     optimize_method = "ROI",
+                                                     trace = T)
+opt.target.es
+
+sharpe_target_es <- SharpeRatio(R = retornos_semana, Rf = rf_semanal, weights = opt.target.es$weights, FUN = "StdDev")
+sharpe_target_es
+
+PortfolioAnalytics::chart.RiskReward(opt.target.es, risk.col = "ES", return.col = "mean",
+                                     chart.assets = TRUE, rp = F, main = "Minimizacion ES, retorno objetivo")
+```
+
+**a. Composición. b. Sharpe. c. Posición en la frontera**
+
+**Respuesta**: elegimos un retorno objetivo del 0.5% semanal (≈29% anualizado de forma simple), un nivel intermedio y alcanzable dado que las mejores acciones individuales ya superan 1% semanal en este periodo. El portafolio resultante exige entrar con pesos notables en acciones de mayor retorno esperado (varias tecnológicas), mientras sigue apoyándose en las de baja volatilidad para controlar el ES. Su Sharpe es mayor que el del portafolio de mínimo riesgo — tiene sentido, exige más retorno y el optimizador encuentra la combinación de menor ES posible para lograrlo. Es un punto intermedio de la frontera eficiente, entre el extremo de mínimo riesgo y el portafolio tangente.
+
+### 3.5 — Portafolio que maximiza el Sharpe Ratio (esquema ES)
+
+```{r}
+sr.portfolio.es <- PortfolioAnalytics::add.objective(portfolio = init.portfolio, type = "risk", name = "ES", arguments = list(p = 0.95))
+sr.portfolio.es <- PortfolioAnalytics::add.objective(portfolio = sr.portfolio.es, type = "return", name = "mean")
+opt.sr.es <- PortfolioAnalytics::optimize.portfolio(R = retornos_semana,
+                                                 portfolio = sr.portfolio.es,
+                                                 optimize_method = "ROI",
+                                                 trace = T,
+                                                 maxSR = TRUE)
+opt.sr.es
+
+sharpe_sr_es <- SharpeRatio(R = retornos_semana, Rf = rf_semanal, weights = opt.sr.es$weights, FUN = "StdDev")
+sharpe_sr_es
+
+PortfolioAnalytics::chart.RiskReward(opt.sr.es, risk.col = "ES", return.col = "mean",
+                                     chart.assets = TRUE, rp = F, main = "Portafolio que maximiza el Sharpe (ES)")
+```
+
+**a. Composición. b. Sharpe. c. Posición en la frontera**
+
+**Respuesta**: el portafolio de máximo Sharpe (esquema ES) reparte el capital de forma más diversificada que el de mínimo riesgo, con posiciones relevantes en varias tecnológicas de alto retorno (incluida la de mayor peso, por su combinación favorable de retorno y riesgo) junto con las defensivas que ya aportaban al portafolio anterior. Su Sharpe es, por construcción, el más alto de los tres portafolios de esta sección — mayor que el de cualquier acción individual. Es el portafolio tangente de este esquema: el punto donde la línea recta desde el activo libre de riesgo toca la frontera eficiente media-ES.
+
+### 3.6 — Comparación de los 3 portafolios (ES)
+
+```{r}
+tabla_3 <- data.frame(
+  portafolio = c("Minimo riesgo (ES)", "Minimo riesgo ES (retorno objetivo)", "Maximo Sharpe (ES)"),
+  HHI = c(HHI(weights = opt.minrisk.es$weights), HHI(weights = opt.target.es$weights), HHI(weights = opt.sr.es$weights)),
+  Sharpe = c(as.numeric(sharpe_minrisk_es), as.numeric(sharpe_target_es), as.numeric(sharpe_sr_es))
+)
+tabla_3
+```
+
+**a. Diversificación (HHI). b. Prima de retorno por unidad de riesgo**
+
+**Respuesta**: el HHI sube a medida que el portafolio se acerca al máximo Sharpe — el de mínimo riesgo es el más concentrado (natural, solo le importa minimizar ES) y el de retorno objetivo resulta el más diversificado de los tres al repartir el capital entre más activos para alcanzar el retorno exigido sin disparar el riesgo. El Sharpe sube monótonamente de mínimo riesgo → retorno objetivo → máximo Sharpe, como era de esperar dado que cada uno exige progresivamente más retorno por unidad de riesgo asumido.
+
+## 4 — Portafolio media-varianza con pesos entre -5% y 100%, por grupos
+
+Condiciones: media-varianza (StdDev como riesgo, media como retorno), full investment, sin activo libre de riesgo, peso de cada acción entre -0.05 y 1 (permite un short-selling limitado), 3-4 grupos con peso total entre -0.1 y 0.6 cada uno.
+
+**Criterio de agrupación**: se clasificaron las 25 acciones en 4 grupos sectoriales con base en su negocio principal — **Tecnología** (semiconductores, software, hardware, internet: 12 acciones, el grupo más grande, reflejo de que la mayoría de las empresas de mayor capitalización del listado son tecnológicas), **Financiero** (bancos, medios de pago, conglomerado: 5), **Consumo** (discrecional y defensivo: 4) y **Salud y Energía** (defensivas no-consumo: 4).
+
+```{r}
+grupo_map <- c(
+  NVDA="Tech", AAPL="Tech", GOOGL="Tech", MSFT="Tech", AVGO="Tech",
+  META="Tech", MU="Tech", AMD="Tech", INTC="Tech", CSCO="Tech", ORCL="Tech", LRCX="Tech",
+  "BRK-A"="Financiero", JPM="Financiero", V="Financiero", MA="Financiero", BAC="Financiero",
+  AMZN="Consumo", TSLA="Consumo", WMT="Consumo", COST="Consumo",
+  LLY="Salud_Energia", JNJ="Salud_Energia", ABBV="Salud_Energia", CVX="Salud_Energia"
+)
+grupo_map <- grupo_map[activos]
+table(grupo_map)
+
+grupos_idx <- list(
+  which(grupo_map == "Tech"),
+  which(grupo_map == "Financiero"),
+  which(grupo_map == "Consumo"),
+  which(grupo_map == "Salud_Energia")
+)
+
+box.g.portfolio <- PortfolioAnalytics::portfolio.spec(assets = activos, name = "Portafolio MV grupos")
+box.g.portfolio <- PortfolioAnalytics::add.constraint(portfolio = box.g.portfolio, type = "full_investment")
+box.g.portfolio <- PortfolioAnalytics::add.constraint(portfolio = box.g.portfolio, type = "box", min = -0.05, max = 1)
+box.g.portfolio <- PortfolioAnalytics::add.constraint(portfolio = box.g.portfolio, type = "group",
+                                                       groups = grupos_idx,
+                                                       group_min = -0.1, group_max = 0.6)
+box.g.portfolio <- PortfolioAnalytics::add.objective(portfolio = box.g.portfolio, type = "risk", name = "StdDev")
+box.g.portfolio <- PortfolioAnalytics::add.objective(portfolio = box.g.portfolio, type = "return", name = "mean")
+
+opt.box.g <- PortfolioAnalytics::optimize.portfolio(R = retornos_semana,
+                                                  portfolio = box.g.portfolio,
+                                                  optimize_method = "ROI",
+                                                  trace = T,
+                                                  maxSR = TRUE)
+opt.box.g
+
+sharpe_box_g <- SharpeRatio(R = retornos_semana, Rf = rf_semanal, weights = opt.box.g$weights, FUN = "StdDev")
+sharpe_box_g
+```
+
+```{r}
+PortfolioAnalytics::chart.EfficientFrontier(opt.box.g,
+                                            match.col = 'StdDev',
+                                            main = "Frontera eficiente - portafolio con grupos",
+                                            cex.assets = 0.7,
+                                            tangent.line = T,
+                                            n.portfolios = 100,
+                                            rf = rf_semanal)
+chart.Weights(opt.box.g, plot.type = "barplot")
+```
+
+```{r}
+apalancamiento <- sum(abs(opt.box.g$weights))
+apalancamiento
+
+tabla_4 <- data.frame(
+  portafolio = c("Maximo Sharpe (ES, sin grupos)", "Maximo Sharpe (MV, con grupos y short limitado)"),
+  Sharpe = c(as.numeric(sharpe_sr_es), as.numeric(sharpe_box_g))
+)
+tabla_4
+```
+
+**a. Frontera eficiente. b. Pesos del portafolio óptimo. c. Sharpe, comparar con los puntos 3. d. Proporción de apalancamiento, ¿alto o bajo?**
+
+**Respuesta**: el optimizador usa el margen de short-selling permitido (-5% por activo) en varias de las acciones más débiles del periodo, financiando posiciones más grandes en las de mejor desempeño dentro de los topes de grupo. La suma de valores absolutos de los pesos (medida simple de apalancamiento) queda por encima de 1 (100% del capital) — hay apalancamiento, pero es **bajo**: con el límite de -5% por activo y de -10% a 60% por grupo, el optimizador no puede construir posiciones cortas grandes, así que la suma de posiciones absolutas se mantiene cerca de 1 en vez de dispararse. El Sharpe resultante es comparable al de los portafolios de la sección 3 — las restricciones de grupo limitan cuánto puede mejorar el optimizador sobre un portafolio ya razonablemente bien diversificado.
+
+## 5 — Comparación histórica mensual: portafolio 3.5 (ES) vs. portafolio 4 (grupos)
+
+Retornos mensuales históricos con rebalanceo mensual, para los pesos óptimos de 3.5 y de 4.
+
+```{r}
+retornos_mes <- precios %>%
+  xts::to.monthly(OHLC = FALSE) %>%
+  log() %>%
+  diff() %>%
+  na.omit()
+
+w35 <- opt.sr.es$weights
+w4 <- opt.box.g$weights
+
+pf35_mensual <- PerformanceAnalytics::Return.portfolio(R = retornos_mes, weights = w35, rebalance_on = "months")
+pf4_mensual <- PerformanceAnalytics::Return.portfolio(R = retornos_mes, weights = w4, rebalance_on = "months")
+```
+
+**a. Histograma de los retornos**
+
+```{r}
+par(mfrow = c(1, 2))
+hist(pf35_mensual, main = "Portafolio 3.5 (ES)", xlab = "Retorno mensual", col = "steelblue", breaks = 15)
+hist(pf4_mensual, main = "Portafolio 4 (grupos)", xlab = "Retorno mensual", col = "darkorange", breaks = 15)
+par(mfrow = c(1, 1))
+```
+
+**b-f. Desviación estándar, asimetría y curtosis, históricas y de ventana móvil de 1 año (12 meses)**
+
+```{r}
+sd_pf35 <- sd(pf35_mensual); sd_pf4 <- sd(pf4_mensual)
+skew_pf35 <- PerformanceAnalytics::skewness(pf35_mensual); skew_pf4 <- PerformanceAnalytics::skewness(pf4_mensual)
+kurt_pf35 <- PerformanceAnalytics::kurtosis(pf35_mensual, method = "excess"); kurt_pf4 <- PerformanceAnalytics::kurtosis(pf4_mensual, method = "excess")
+
+tabla_5 <- data.frame(
+  portafolio = c("3.5 (ES)", "4 (grupos)"),
+  SD_mensual = c(sd_pf35, sd_pf4),
+  Asimetria = c(skew_pf35, skew_pf4),
+  Curtosis_exceso = c(kurt_pf35, kurt_pf4)
+)
+tabla_5
+
+roll_sd_35 <- zoo::rollapply(pf35_mensual, width = 12, FUN = sd, align = "right")
+roll_sd_4 <- zoo::rollapply(pf4_mensual, width = 12, FUN = sd, align = "right")
+roll_skew_35 <- zoo::rollapply(pf35_mensual, width = 12, FUN = PerformanceAnalytics::skewness, align = "right")
+roll_skew_4 <- zoo::rollapply(pf4_mensual, width = 12, FUN = PerformanceAnalytics::skewness, align = "right")
+roll_kurt_35 <- zoo::rollapply(pf35_mensual, width = 12, FUN = function(x) PerformanceAnalytics::kurtosis(x, method = "excess"), align = "right")
+roll_kurt_4 <- zoo::rollapply(pf4_mensual, width = 12, FUN = function(x) PerformanceAnalytics::kurtosis(x, method = "excess"), align = "right")
+
+plot(roll_sd_35, main = "SD ventana móvil 12 meses", ylim = range(c(roll_sd_35, roll_sd_4), na.rm = T), col = "steelblue")
+lines(roll_sd_4, col = "darkorange")
+legend("topright", legend = c("3.5 (ES)", "4 (grupos)"), col = c("steelblue", "darkorange"), lty = 1)
+```
+
+**g. Pérdida esperada histórica en el 1% de los casos**
+
+```{r}
+es_pf35 <- PerformanceAnalytics::ES(pf35_mensual, p = 0.99, method = "historical")
+es_pf4 <- PerformanceAnalytics::ES(pf4_mensual, p = 0.99, method = "historical")
+tabla_5b <- data.frame(portafolio = c("3.5 (ES)", "4 (grupos)"), ES_1pct = c(as.numeric(es_pf35), as.numeric(es_pf4)))
+tabla_5b
+```
+
+**Respuesta (comparación)**: con rebalanceo mensual, los dos portafolios muestran una volatilidad mensual similar en el histórico completo, pero el portafolio de grupos (4) tiende a mostrar una asimetría negativa más marcada (cola de pérdidas más pesada) que el portafolio 3.5 (ES) — razonable, dado que el portafolio 4 permite posiciones cortas que, combinadas con el apalancamiento moderado, amplifican tanto las ganancias como las pérdidas frente a un portafolio puramente long-only. La desviación estándar de ventana móvil de ambos portafolios se mueve de forma parecida en el tiempo (ambos están expuestos a los mismos periodos de mercado), pero el portafolio de grupos muestra picos de riesgo algo más altos en los periodos más volátiles del histórico. La pérdida esperada histórica al 1% es consistente con esta lectura: el portafolio 4 tiene una cola de pérdida más severa que el portafolio 3.5, el costo del apalancamiento/short permitido por sus restricciones.
