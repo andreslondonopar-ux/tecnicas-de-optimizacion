@@ -67,6 +67,27 @@ medidas <- function(w) {
 tabla4 <- rbind(`Punto 2` = medidas(w2), `Punto 3` = medidas(w3))
 print(round(tabla4, 5))
 
+# Graficas de los portafolios de los puntos 2 y 3 ----
+grafico_pesos_qu <- function(w, titulo) {
+  d <- tibble(Accion = activos, Peso = as.numeric(w)) %>% filter(abs(Peso) > 0.0005) %>% arrange(Peso)
+  ggplot(d, aes(x = factor(Accion, levels = Accion), y = Peso, fill = Peso > 0)) +
+    geom_col(show.legend = FALSE) +
+    geom_text(aes(label = percent(Peso, accuracy = 0.1), hjust = ifelse(Peso >= 0, -0.1, 1.1)), size = 3) +
+    coord_flip() + scale_y_continuous(labels = percent, expand = expansion(mult = 0.18)) +
+    labs(title = titulo, x = NULL, y = "Peso") + theme_minimal()
+}
+print(grafico_pesos_qu(w2, "Punto 2: máxima utilidad cuadrática (sin cortos)"))
+print(grafico_pesos_qu(w3, "Punto 3: máxima utilidad cuadrática (pesos de -5% a 60%)"))
+riesgo_retorno <- bind_rows(
+  tibble(Nombre = activos, Media = mu, Desviacion = sqrt(diag(Sigma)), Tipo = "Acción"),
+  tibble(Nombre = c("Portafolio 2", "Portafolio 3"), Media = tabla4[, "Media"],
+         Desviacion = tabla4[, "Desviacion"], Tipo = "Portafolio"))
+print(ggplot(riesgo_retorno, aes(Desviacion, Media, color = Tipo, label = Nombre)) +
+        geom_point(size = 2) + geom_text(vjust = -0.7, size = 2.5, show.legend = FALSE) +
+        scale_x_continuous(labels = percent) + scale_y_continuous(labels = percent) +
+        labs(title = "Riesgo y retorno mensual: acciones y portafolios", x = "Desviación estándar", y = "Retorno medio") +
+        theme_minimal())
+
 # 5. beta* que maximiza la utilidad de la combinacion con activo libre de riesgo ----
 # E[U(Rc)] = Rf + beta (E[Rp] - Rf) - (lambda/2) beta^2 Var[Rp]  =>  beta* = (E[Rp] - Rf) / (lambda Var[Rp])
 beta_star <- function(w, rf) { m <- medidas(w); (m["Media"] - rf) / (lambda * m["Varianza"]) }
