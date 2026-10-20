@@ -71,7 +71,7 @@ print(round(tabla4, 5))
 grafico_pesos_qu <- function(w, titulo) {
   d <- tibble(Accion = activos, Peso = as.numeric(w)) %>% filter(abs(Peso) > 0.0005) %>% arrange(Peso)
   ggplot(d, aes(x = factor(Accion, levels = Accion), y = Peso, fill = Peso > 0)) +
-    geom_col(show.legend = FALSE) +
+    geom_col(show.legend = FALSE) + scale_fill_manual(values = c("TRUE" = "#00BFC4", "FALSE" = "#F8766D")) +
     geom_text(aes(label = percent(Peso, accuracy = 0.1), hjust = ifelse(Peso >= 0, -0.1, 1.1)), size = 3) +
     coord_flip() + scale_y_continuous(labels = percent, expand = expansion(mult = 0.18)) +
     labs(title = titulo, x = NULL, y = "Peso") + theme_minimal()
