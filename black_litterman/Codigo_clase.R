@@ -18,7 +18,7 @@ if (rstudioapi::isAvailable()) setwd(dirname(rstudioapi::getActiveDocumentContex
 
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, scales, xts, lubridate, TTR, timetk, PerformanceAnalytics, PortfolioAnalytics)
-options(scipen = 999)
+options(scipen = 999, width = 200, tibble.width = Inf, tibble.print_max = Inf)
 
 # 1. Preliminares ----
 

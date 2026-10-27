@@ -13,7 +13,7 @@
 
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, scales, xts, quantmod, zoo, PerformanceAnalytics)
-options(scipen = 999)
+options(scipen = 999, width = 200, tibble.width = Inf, tibble.print_max = Inf)
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
   setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
