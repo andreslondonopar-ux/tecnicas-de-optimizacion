@@ -1540,8 +1540,6 @@ border-radius: 0px;
 <body>
 <div style="background:#0f1115;color:#e0e0e0;padding:10px 20px;font-family:sans-serif;border-bottom:1px solid #333;"><a href="../" style="color:#4da3ff;">&#127968; Inicio del curso</a> &nbsp;|&nbsp; <a href="./" style="color:#4da3ff;">&#128216; C&oacute;digo de la clase</a> &nbsp;|&nbsp; <a href="taller/" style="color:#4da3ff;">&#128221; Taller en clase</a></div>
 
-<div style="background:#0f1115;color:#e0e0e0;padding:10px 20px;font-family:sans-serif;border-bottom:1px solid #333;"><a href="../" style="color:#4da3ff;">&#127968; Inicio del curso</a> &nbsp;|&nbsp; <a href="./" style="color:#4da3ff;">&#128216; C&oacute;digo de la clase</a> &nbsp;|&nbsp; <a href="taller/" style="color:#4da3ff;">&#128221; Taller en clase</a></div>
-
 
 
 <div class="container-fluid main-container">
@@ -1593,7 +1591,7 @@ if (!require(&quot;pacman&quot;)) install.packages(&quot;pacman&quot;)</code></p
 <pre><code>## Cargando paquete requerido: pacman</code></pre>
 <pre><code>## Warning: package &#39;pacman&#39; was built under R version 4.5.2</code></pre>
 <pre class="r"><code>pacman::p_load(tidyverse, scales, xts, lubridate, TTR, timetk, PerformanceAnalytics, PortfolioAnalytics)
-options(scipen = 999)
+options(scipen = 999, width = 200, tibble.width = Inf, tibble.print_max = Inf)
 
 # 1. Preliminares ----
 
@@ -1608,40 +1606,36 @@ monthly_prices &lt;- read_csv(file = &quot;Data/Chapt_15_data.csv&quot;,
 monthly_returns &lt;- ROC(x = monthly_prices, na.pad = F)
 
 head(monthly_returns)</code></pre>
-<pre><code>##                    AAPL         MSFT        AMZN         GOOG          KO
-## 2010-02-01  3.233727905 -2.469093427 -0.23959987 -1.926053716 -4.28424912
-## 2010-03-01  0.201777207  0.043298712  0.07937391  0.067807197  0.01373018
-## 2010-04-01  0.243710351  0.067851281  0.14664189 -0.002090364  0.03012059
-## 2010-05-01  0.089023515 -0.126871468 -0.07897533 -0.155123967 -0.05132573
-## 2010-06-01 -0.037302413 -0.278606243 -0.22698025 -0.166768726 -0.06432618
-## 2010-07-01  0.001439602  0.004889643 -0.06223500 -0.001607412  0.08661326
-##                    JNJ           PG          DIS          WMT          XOM
-## 2010-02-01 -0.12853956 -1.082590653 -1.494969092 -1.273008722 -0.938508000
-## 2010-03-01  0.04417177  0.034715944  0.166689614  0.039810736  0.045317268
-## 2010-04-01  0.02804722 -0.017858063  0.164885241 -0.002373309  0.048234730
-## 2010-05-01 -0.11185718 -0.027399604 -0.043618859 -0.089410989 -0.102412060
-## 2010-06-01 -0.07591307 -0.028037047 -0.156597118 -0.103854007 -0.165072314
-## 2010-07-01  0.00548352  0.001145376  0.008046534  0.018166231 -0.006216965</code></pre>
+<pre><code>##                                                                                                                                                                                                                                                                              AAPL
+## 2010-02-01 100228145641556725198008446460464266444864482280062282086442420066622848626604422028442426824442460284660606048480266822646042084860686264468600424028860248068600464066064886026460446622820662466824404282220446684868428664264006424442260284444068228220.000000000
+## 2010-03-01                                                                                                                                                                                                                                                            0.201777207
+## 2010-04-01                                                                                                                                                                                                                                                            0.243710351
+## 2010-05-01                                                                                                                                                                                                                                                            0.089023515
+## 2010-06-01                                                                                                                                                                                                                                                           -0.037302413
+## 2010-07-01                                                                                                                                                                                                                                                            0.001439602
+##                    MSFT        AMZN         GOOG          KO         JNJ           PG          DIS          WMT          XOM
+## 2010-02-01 -2.469093427 -0.23959987 -1.926053716 -4.28424912 -0.12853956 -1.082590653 -1.494969092 -1.273008722 -0.938508000
+## 2010-03-01  0.043298712  0.07937391  0.067807197  0.01373018  0.04417177  0.034715944  0.166689614  0.039810736  0.045317268
+## 2010-04-01  0.067851281  0.14664189 -0.002090364  0.03012059  0.02804722 -0.017858063  0.164885241 -0.002373309  0.048234730
+## 2010-05-01 -0.126871468 -0.07897533 -0.155123967 -0.05132573 -0.11185718 -0.027399604 -0.043618859 -0.089410989 -0.102412060
+## 2010-06-01 -0.278606243 -0.22698025 -0.166768726 -0.06432618 -0.07591307 -0.028037047 -0.156597118 -0.103854007 -0.165072314
+## 2010-07-01  0.004889643 -0.06223500 -0.001607412  0.08661326  0.00548352  0.001145376  0.008046534  0.018166231 -0.006216965</code></pre>
 <pre class="r"><code>## 1.3. Capitalizacion del mercado y libre de riesgo----
 
 # Market Capitalization ($B)
 market_cap &lt;- c(1370, 1358, 1043, 1020, 257.356, 395.024, 312.879, 250.902, 336.433, 250.356) %&gt;% 
 `names&lt;-`(colnames(monthly_returns))
 market_cap</code></pre>
-<pre><code>##     AAPL     MSFT     AMZN     GOOG       KO      JNJ       PG      DIS 
-## 1370.000 1358.000 1043.000 1020.000  257.356  395.024  312.879  250.902 
-##      WMT      XOM 
-##  336.433  250.356</code></pre>
+<pre><code>##     AAPL     MSFT     AMZN     GOOG       KO      JNJ       PG      DIS      WMT      XOM 
+## 1370.000 1358.000 1043.000 1020.000  257.356  395.024  312.879  250.902  336.433  250.356</code></pre>
 <pre class="r"><code># Input: Current T-Bill rate
 t_bill_r &lt;- 0.016/12
 
 # Proporcion del Benchmark
 bench_prop &lt;- market_cap / sum(market_cap)
 bench_prop</code></pre>
-<pre><code>##       AAPL       MSFT       AMZN       GOOG         KO        JNJ         PG 
-## 0.20776621 0.20594636 0.15817530 0.15468725 0.03902911 0.05990704 0.04744940 
-##        DIS        WMT        XOM 
-## 0.03805033 0.05102147 0.03796753</code></pre>
+<pre><code>##       AAPL       MSFT       AMZN       GOOG         KO        JNJ         PG        DIS        WMT        XOM 
+## 0.20776621 0.20594636 0.15817530 0.15468725 0.03902911 0.05990704 0.04744940 0.03805033 0.05102147 0.03796753</code></pre>
 <pre class="r"><code># 1.4 Funcion para hallar el portafolio que define la CML ----
 CML &lt;- function(retornos = NULL, mean_retornos = NULL, var_cov = NULL, rf){
     
@@ -1675,26 +1669,26 @@ CML &lt;- function(retornos = NULL, mean_retornos = NULL, var_cov = NULL, rf){
 # 2. Optimizacion simple (inocente) CML ----
 optimal_port &lt;- CML(retornos = monthly_returns, rf = t_bill_r)
 optimal_port[[&quot;weigths&quot;]]</code></pre>
-<pre><code>##              [,1]
-## AAPL  0.219847845
-## MSFT  0.078521530
-## AMZN  0.269836996
-## GOOG -0.004532244
-## KO   -0.016113465
-## JNJ   0.254801671
-## PG    0.304214861
-## DIS   0.216576688
-## WMT   0.102367638
-## XOM  -0.425521520</code></pre>
+<pre><code>##             [,1]
+## AAPL  0.00000000
+## MSFT  0.18009155
+## AMZN  0.40612230
+## GOOG -0.06754217
+## KO   -0.29967765
+## JNJ   0.33665329
+## PG    0.41537327
+## DIS   0.32095634
+## WMT   0.16765997
+## XOM  -0.45963689</code></pre>
 <pre class="r"><code>optimal_port[[&quot;portfolio_return&quot;]]</code></pre>
-<pre><code>##           [,1]
-## [1,] 0.0394693</code></pre>
-<pre class="r"><code>optimal_port[[&quot;portfolio_risk&quot;]]</code></pre>
 <pre><code>##            [,1]
-## [1,] 0.05823984</code></pre>
+## [1,] 0.04043838</code></pre>
+<pre class="r"><code>optimal_port[[&quot;portfolio_risk&quot;]]</code></pre>
+<pre><code>##      [,1]
+## [1,]  NaN</code></pre>
 <pre class="r"><code>optimal_port[[&quot;SR&quot;]]</code></pre>
-<pre><code>##           [,1]
-## [1,] 0.6548089</code></pre>
+<pre><code>##      [,1]
+## [1,]  NaN</code></pre>
 <pre class="r"><code># 3. Optimizacion BL ----
 
 ## 3.1 Opinión del mercado ----
@@ -1713,7 +1707,7 @@ exp_ret_no_norm &lt;- cov_mat %*% (bench_prop + t_bill_r)
 port_ret_no_norm &lt;- bench_prop %*% exp_ret_no_norm
 
 label_percent(accuracy = 0.01)(port_ret_no_norm)</code></pre>
-<pre><code>## [1] &quot;0.61%&quot;</code></pre>
+<pre><code>## [1] &quot;Inf&quot;</code></pre>
 <pre class="r"><code>label_percent(accuracy = 0.01)(bench_ret)</code></pre>
 <pre><code>## [1] &quot;1.00%&quot;</code></pre>
 <pre class="r"><code>### 3.1.2. Calculo de los retornos esperados normalizados ----
@@ -1755,31 +1749,31 @@ NF &lt;- BL_exp_ret[[&quot;normalize_factor&quot;]]
 port_ret &lt;- bench_prop %*% exp_ret
 
 label_percent(accuracy = 0.01)(port_ret)</code></pre>
-<pre><code>## [1] &quot;1.00%&quot;</code></pre>
+<pre><code>## [1] NA</code></pre>
 <pre class="r"><code>label_percent(accuracy = 0.01)(bench_ret)</code></pre>
 <pre><code>## [1] &quot;1.00%&quot;</code></pre>
 <pre class="r"><code>### 3.1.3. Un chequeo adicional ----
 
 # Resolver el problema con los retornos esperados iguales a los hallados
 CML(mean_retornos = exp_ret, var_cov = cov_mat, rf = t_bill_r)[[&quot;weigths&quot;]]</code></pre>
-<pre><code>##            [,1]
-## AAPL 0.20776621
-## MSFT 0.20594636
-## AMZN 0.15817530
-## GOOG 0.15468725
-## KO   0.03902911
-## JNJ  0.05990704
-## PG   0.04744940
-## DIS  0.03805033
-## WMT  0.05102147
-## XOM  0.03796753</code></pre>
+<pre><code>##      [,1]
+## AAPL  NaN
+## MSFT  NaN
+## AMZN  NaN
+## GOOG  NaN
+## KO    NaN
+## JNJ   NaN
+## PG    NaN
+## DIS   NaN
+## WMT   NaN
+## XOM   NaN</code></pre>
 <pre class="r"><code>bench_prop %*% exp_ret</code></pre>
 <pre><code>##      [,1]
-## [1,] 0.01</code></pre>
+## [1,]  NaN</code></pre>
 <pre class="r"><code># Verificar que la suma es igual a 1
 CML(mean_retornos = exp_ret, var_cov = cov_mat, rf = t_bill_r)[[&quot;weigths&quot;]] %&gt;% 
     sum()</code></pre>
-<pre><code>## [1] 1</code></pre>
+<pre><code>## [1] NaN</code></pre>
 <pre class="r"><code># 4. Introduciendo opiniones ----
 
 ## 4.1. Aumentando el retorno esperado de Alphabet ----
@@ -1793,16 +1787,16 @@ comp_retornos &lt;- data.frame(accion = colnames(monthly_returns),
                             benchmark = label_percent(accuracy = 0.01)(exp_ret))
 print(comp_retornos)</code></pre>
 <pre><code>##    accion opinion_google benchmark
-## 1    AAPL         -2.44%    -1.54%
-## 2    MSFT          3.20%     2.41%
-## 3    AMZN          1.09%     0.93%
-## 4    GOOG          2.70%     2.00%
-## 5      KO          4.63%     3.36%
-## 6     JNJ          0.49%     0.43%
-## 7      PG          1.36%     1.02%
-## 8     DIS          2.05%     1.56%
-## 9     WMT          1.60%     1.21%
-## 10    XOM          1.39%     1.08%</code></pre>
+## 1    AAPL           &lt;NA&gt;      &lt;NA&gt;
+## 2    MSFT          0.92%     0.13%
+## 3    AMZN          0.30%     0.13%
+## 4    GOOG          0.83%     0.13%
+## 5      KO          1.41%     0.13%
+## 6     JNJ          0.19%     0.13%
+## 7      PG          0.47%     0.13%
+## 8     DIS          0.62%     0.13%
+## 9     WMT          0.52%     0.13%
+## 10    XOM          0.44%     0.13%</code></pre>
 <pre class="r"><code>## 4.3. Portafolio optimo ajustado por la opinion ----
 opn_adj &lt;- CML(mean_retornos = opn_adj_ret, var_cov = cov_mat, rf = t_bill_r)
 
@@ -1811,39 +1805,138 @@ comp_pesos &lt;- data.frame(accion = colnames(monthly_returns),
                          benchmark = label_percent(accuracy = 0.01)(bench_prop))
 print(comp_pesos)</code></pre>
 <pre><code>##      accion opinion_google benchmark
-## AAPL   AAPL         18.50%    20.78%
-## MSFT   MSFT         18.34%    20.59%
-## AMZN   AMZN         14.09%    15.82%
-## GOOG   GOOG         24.72%    15.47%
-## KO       KO          3.48%     3.90%
-## JNJ     JNJ          5.33%     5.99%
-## PG       PG          4.23%     4.74%
-## DIS     DIS          3.39%     3.81%
-## WMT     WMT          4.54%     5.10%
-## XOM     XOM          3.38%     3.80%</code></pre>
+## AAPL   AAPL           &lt;NA&gt;    20.78%
+## MSFT   MSFT           &lt;NA&gt;    20.59%
+## AMZN   AMZN           &lt;NA&gt;    15.82%
+## GOOG   GOOG           &lt;NA&gt;    15.47%
+## KO       KO           &lt;NA&gt;     3.90%
+## JNJ     JNJ           &lt;NA&gt;     5.99%
+## PG       PG           &lt;NA&gt;     4.74%
+## DIS     DIS           &lt;NA&gt;     3.81%
+## WMT     WMT           &lt;NA&gt;     5.10%
+## XOM     XOM           &lt;NA&gt;     3.80%</code></pre>
 <pre class="r"><code>port_ret_adj &lt;- opn_adj[[&quot;portfolio_return&quot;]]
 
 retornos &lt;- c(Benchmark = label_percent(accuracy = 0.01)(bench_ret), 
               Adj_google = label_percent(accuracy = 0.01)(port_ret_adj))
 retornos</code></pre>
 <pre><code>##  Benchmark Adj_google 
-##    &quot;1.00%&quot;    &quot;1.39%&quot;</code></pre>
+##    &quot;1.00%&quot;         NA</code></pre>
 <pre class="r"><code># 5. Opiniones de varias acciones ----
 
 ## 5.1. The Black-Litterman Tracking Matrix ----
 track_mat &lt;- t(cov_mat/diag(cov_mat))
 print(round(track_mat, 3))</code></pre>
-<pre><code>##        AAPL   MSFT   AMZN   GOOG     KO    JNJ     PG    DIS    WMT    XOM
-## AAPL  1.000 -1.088 -0.356 -1.285 -0.727 -0.970 -2.192 -1.466 -1.827 -1.932
-## MSFT -0.655  1.000  0.750  1.127  0.580  1.444  1.817  1.332  1.522  1.803
-## AMZN -0.044  0.155  1.000  0.235  0.071  0.479  0.152  0.218  0.170  0.312
-## GOOG -0.519  0.755  0.763  1.000  0.452  1.098  1.420  1.052  1.182  1.446
-## KO   -1.181  1.563  0.929  1.819  1.000  2.069  3.089  2.158  2.605  2.906
-## JNJ  -0.031  0.077  0.123  0.087  0.041  1.000  0.211  0.118  0.184  0.230
-## PG   -0.297  0.409  0.166  0.477  0.258  0.890  1.000  0.564  0.731  0.789
-## DIS  -0.393  0.592  0.469  0.698  0.356  0.988  1.114  1.000  0.944  1.203
-## WMT  -0.347  0.480  0.260  0.556  0.304  1.091  1.023  0.669  1.000  0.957
-## XOM  -0.240  0.372  0.311  0.445  0.222  0.891  0.722  0.558  0.626  1.000</code></pre>
+<pre><code>##      AAPL
+## AAPL  NaN
+## MSFT    0
+## AMZN    0
+## GOOG    0
+## KO      0
+## JNJ     0
+## PG      0
+## DIS     0
+## WMT     0
+## XOM     0
+##                                                                                                                                                                                                                                                                  MSFT
+## AAPL -36011708325738869276662026040246060204288804282464226086868482602642002008828860860464068442044488602646622004626008848888860884084440026624624020248648824282226448444028226260666442468686444004888420604862868022446420626446080464848442604840440882666.000
+## MSFT                                                                                                                                                                                                                                                            1.000
+## AMZN                                                                                                                                                                                                                                                            0.155
+## GOOG                                                                                                                                                                                                                                                            0.755
+## KO                                                                                                                                                                                                                                                              1.563
+## JNJ                                                                                                                                                                                                                                                             0.077
+## PG                                                                                                                                                                                                                                                              0.409
+## DIS                                                                                                                                                                                                                                                             0.592
+## WMT                                                                                                                                                                                                                                                             0.480
+## XOM                                                                                                                                                                                                                                                             0.372
+##                                                                                                                                                                                                                                                                  AMZN
+## AAPL -19892095078363667304088260008686668628064484022886244204608442428468402008866400220868446808828448482422282080084022880464082406428660882246640662446600620020066848480882620006664228484806040802266080626846808248006406640428268620042462602424008804062.000
+## MSFT                                                                                                                                                                                                                                                            0.750
+## AMZN                                                                                                                                                                                                                                                            1.000
+## GOOG                                                                                                                                                                                                                                                            0.763
+## KO                                                                                                                                                                                                                                                              0.929
+## JNJ                                                                                                                                                                                                                                                             0.123
+## PG                                                                                                                                                                                                                                                              0.166
+## DIS                                                                                                                                                                                                                                                             0.469
+## WMT                                                                                                                                                                                                                                                             0.260
+## XOM                                                                                                                                                                                                                                                             0.311
+##                                                                                                                                                                                                                                                                  GOOG
+## AAPL -41981515411914749512688648608440060224286060208600842000066804220486420082600608822008206282062286864002066264680240800620884404640802428202804448666806684622648602862820262604042246864862060264060020466462284606242484220066222866042628026604006440882.000
+## MSFT                                                                                                                                                                                                                                                            1.127
+## AMZN                                                                                                                                                                                                                                                            0.235
+## GOOG                                                                                                                                                                                                                                                            1.000
+## KO                                                                                                                                                                                                                                                              1.819
+## JNJ                                                                                                                                                                                                                                                             0.087
+## PG                                                                                                                                                                                                                                                              0.477
+## DIS                                                                                                                                                                                                                                                             0.698
+## WMT                                                                                                                                                                                                                                                             0.556
+## XOM                                                                                                                                                                                                                                                             0.445
+##                                                                                                                                                                                                                                                                    KO
+## AAPL -22966258738299406436262466440642248026846886828860866844028206864622406688460200486428048608820828622268408684062666024404200268222404020822488062084266484880806420064022828040446806240626808000024860802022426684846208204888040088880684264482860860646.000
+## MSFT                                                                                                                                                                                                                                                            0.580
+## AMZN                                                                                                                                                                                                                                                            0.071
+## GOOG                                                                                                                                                                                                                                                            0.452
+## KO                                                                                                                                                                                                                                                              1.000
+## JNJ                                                                                                                                                                                                                                                             0.041
+## PG                                                                                                                                                                                                                                                              0.258
+## DIS                                                                                                                                                                                                                                                             0.356
+## WMT                                                                                                                                                                                                                                                             0.304
+## XOM                                                                                                                                                                                                                                                             0.222
+##                                                                                                                                                                                                                                                                   JNJ
+## AAPL -39813527463327208864022088002288006002880886240680464640006602020222280224680200848468000620604840262286008688602822882224420642460242682020466068202468640862022660206660028060206462642428464262868482282826464448022202064004264080006406200624604488466.000
+## MSFT                                                                                                                                                                                                                                                            1.444
+## AMZN                                                                                                                                                                                                                                                            0.479
+## GOOG                                                                                                                                                                                                                                                            1.098
+## KO                                                                                                                                                                                                                                                              2.069
+## JNJ                                                                                                                                                                                                                                                             1.000
+## PG                                                                                                                                                                                                                                                              0.890
+## DIS                                                                                                                                                                                                                                                             0.988
+## WMT                                                                                                                                                                                                                                                             1.091
+## XOM                                                                                                                                                                                                                                                             0.891
+##                                                                                                                                                                                                                                                                    PG
+## AAPL -70298644657278462464006680264866620860222466426062264882422608044068280444222600282806606424682860040244008482248026622066280080882684642084662862424468680864448886248640484800860226820024042442282264684008066862646866444628406664024666648486482220460.000
+## MSFT                                                                                                                                                                                                                                                            1.817
+## AMZN                                                                                                                                                                                                                                                            0.152
+## GOOG                                                                                                                                                                                                                                                            1.420
+## KO                                                                                                                                                                                                                                                              3.089
+## JNJ                                                                                                                                                                                                                                                             0.211
+## PG                                                                                                                                                                                                                                                              1.000
+## DIS                                                                                                                                                                                                                                                             1.114
+## WMT                                                                                                                                                                                                                                                             1.023
+## XOM                                                                                                                                                                                                                                                             0.722
+##                                                                                                                                                                                                                                                                   DIS
+## AAPL -49348362399295721704628680460646682060282648824486806080460200282064646620466204460286888626464826028428446006206666446888088466806462042228266262046208648240082666040268042248640608822242642484866446464224682404680242484408060040026206022224068000820.000
+## MSFT                                                                                                                                                                                                                                                            1.332
+## AMZN                                                                                                                                                                                                                                                            0.218
+## GOOG                                                                                                                                                                                                                                                            1.052
+## KO                                                                                                                                                                                                                                                              2.158
+## JNJ                                                                                                                                                                                                                                                             0.118
+## PG                                                                                                                                                                                                                                                              0.564
+## DIS                                                                                                                                                                                                                                                             1.000
+## WMT                                                                                                                                                                                                                                                             0.669
+## XOM                                                                                                                                                                                                                                                             0.558
+##                                                                                                                                                                                                                                                                   WMT
+## AAPL -58965912315445156912088268228022822808082682268200600286242282062642482040224240800608688482688244262242028428266468808202442468042488244426240020864028220204400406042680042462268424400660606244008006802800424866282628404620084826826206686660624088640.000
+## MSFT                                                                                                                                                                                                                                                            1.522
+## AMZN                                                                                                                                                                                                                                                            0.170
+## GOOG                                                                                                                                                                                                                                                            1.182
+## KO                                                                                                                                                                                                                                                              2.605
+## JNJ                                                                                                                                                                                                                                                             0.184
+## PG                                                                                                                                                                                                                                                              0.731
+## DIS                                                                                                                                                                                                                                                             0.944
+## WMT                                                                                                                                                                                                                                                             1.000
+## XOM                                                                                                                                                                                                                                                             0.626
+##                                                                                                                                                                                                                                                                   XOM
+## AAPL -65978992878222406564048888800402048482848486280822024806680226462048684480884280080646084668060420282240060000846666084280684440064284088862244820060068440880448246666666220022826462020080882668808462042864244480684806442600826822222080684282048620820.000
+## MSFT                                                                                                                                                                                                                                                            1.803
+## AMZN                                                                                                                                                                                                                                                            0.312
+## GOOG                                                                                                                                                                                                                                                            1.446
+## KO                                                                                                                                                                                                                                                              2.906
+## JNJ                                                                                                                                                                                                                                                             0.230
+## PG                                                                                                                                                                                                                                                              0.789
+## DIS                                                                                                                                                                                                                                                             1.203
+## WMT                                                                                                                                                                                                                                                             0.957
+## XOM                                                                                                                                                                                                                                                             1.000</code></pre>
 <pre class="r"><code>## 5.2. Dos o mas opiniones ----
 
 # Input: Vector de los deltas de las acciones de Alphabet y Disney
@@ -1857,16 +1950,16 @@ comp_retornos &lt;- comp_retornos %&gt;%
     mutate(opinion_dos = label_percent(accuracy = 0.01)(opn_adj_ret_2), .after = 2)
 print(comp_retornos)</code></pre>
 <pre><code>##    accion opinion_google opinion_dos benchmark
-## 1    AAPL         -2.44%      -1.85%    -1.54%
-## 2    MSFT          3.20%       2.66%     2.41%
-## 3    AMZN          1.09%       1.00%     0.93%
-## 4    GOOG          2.70%       2.28%     2.00%
-## 5      KO          4.63%       3.77%     3.36%
-## 6     JNJ          0.49%       0.44%     0.43%
-## 7      PG          1.36%       1.13%     1.02%
-## 8     DIS          2.05%       1.65%     1.56%
-## 9     WMT          1.60%       1.33%     1.21%
-## 10    XOM          1.39%       1.17%     1.08%</code></pre>
+## 1    AAPL           &lt;NA&gt;        &lt;NA&gt;      &lt;NA&gt;
+## 2    MSFT          0.92%       0.39%     0.13%
+## 3    AMZN          0.30%       0.21%     0.13%
+## 4    GOOG          0.83%       0.41%     0.13%
+## 5      KO          1.41%       0.54%     0.13%
+## 6     JNJ          0.19%       0.15%     0.13%
+## 7      PG          0.47%       0.24%     0.13%
+## 8     DIS          0.62%       0.22%     0.13%
+## 9     WMT          0.52%       0.25%     0.13%
+## 10    XOM          0.44%       0.22%     0.13%</code></pre>
 <pre class="r"><code>## 5.4. Portafolio ajustado a las nuevas opiniones ----
 opn_adj_2 &lt;- CML(mean_retornos = opn_adj_ret_2, var_cov = cov_mat, rf = t_bill_r)
 
@@ -1874,21 +1967,21 @@ comp_pesos &lt;- comp_pesos %&gt;%
     mutate(opinion_dos = label_percent(accuracy = 0.01)(opn_adj_2[[&quot;weigths&quot;]]), .after = 2)
 print(comp_pesos)</code></pre>
 <pre><code>##      accion opinion_google opinion_dos benchmark
-## AAPL   AAPL         18.50%      20.43%    20.78%
-## MSFT   MSFT         18.34%      20.25%    20.59%
-## AMZN   AMZN         14.09%      15.55%    15.82%
-## GOOG   GOOG         24.72%      27.29%    15.47%
-## KO       KO          3.48%       3.84%     3.90%
-## JNJ     JNJ          5.33%       5.89%     5.99%
-## PG       PG          4.23%       4.67%     4.74%
-## DIS     DIS          3.39%      -6.66%     3.81%
-## WMT     WMT          4.54%       5.02%     5.10%
-## XOM     XOM          3.38%       3.73%     3.80%</code></pre>
+## AAPL   AAPL           &lt;NA&gt;        &lt;NA&gt;    20.78%
+## MSFT   MSFT           &lt;NA&gt;        &lt;NA&gt;    20.59%
+## AMZN   AMZN           &lt;NA&gt;        &lt;NA&gt;    15.82%
+## GOOG   GOOG           &lt;NA&gt;        &lt;NA&gt;    15.47%
+## KO       KO           &lt;NA&gt;        &lt;NA&gt;     3.90%
+## JNJ     JNJ           &lt;NA&gt;        &lt;NA&gt;     5.99%
+## PG       PG           &lt;NA&gt;        &lt;NA&gt;     4.74%
+## DIS     DIS           &lt;NA&gt;        &lt;NA&gt;     3.81%
+## WMT     WMT           &lt;NA&gt;        &lt;NA&gt;     5.10%
+## XOM     XOM           &lt;NA&gt;        &lt;NA&gt;     3.80%</code></pre>
 <pre class="r"><code>retornos &lt;- c(retornos,
               Adj_dos = label_percent(accuracy = 0.01)(opn_adj_2[[&quot;portfolio_return&quot;]]))
 retornos</code></pre>
 <pre><code>##  Benchmark Adj_google    Adj_dos 
-##    &quot;1.00%&quot;    &quot;1.39%&quot;    &quot;1.16%&quot;</code></pre>
+##    &quot;1.00%&quot;         NA         NA</code></pre>
 <pre class="r"><code># 6. Portafolio a partir de la confianza de las opiniones ----
 
 ## 6.1. Definiendo el nivel de confianza ----
@@ -1901,16 +1994,16 @@ comp_retornos &lt;- comp_retornos %&gt;%
     mutate(confianza = label_percent(accuracy = 0.01)(conf_adj_ret))
 print(comp_retornos)</code></pre>
 <pre><code>##    accion opinion_google opinion_dos benchmark confianza
-## 1    AAPL         -2.44%      -1.85%    -1.54%    -1.72%
-## 2    MSFT          3.20%       2.66%     2.41%     2.56%
-## 3    AMZN          1.09%       1.00%     0.93%     0.97%
-## 4    GOOG          2.70%       2.28%     2.00%     2.17%
-## 5      KO          4.63%       3.77%     3.36%     3.61%
-## 6     JNJ          0.49%       0.44%     0.43%     0.44%
-## 7      PG          1.36%       1.13%     1.02%     1.09%
-## 8     DIS          2.05%       1.65%     1.56%     1.62%
-## 9     WMT          1.60%       1.33%     1.21%     1.28%
-## 10    XOM          1.39%       1.17%     1.08%     1.13%</code></pre>
+## 1    AAPL           &lt;NA&gt;        &lt;NA&gt;      &lt;NA&gt;      &lt;NA&gt;
+## 2    MSFT          0.92%       0.39%     0.13%     0.29%
+## 3    AMZN          0.30%       0.21%     0.13%     0.18%
+## 4    GOOG          0.83%       0.41%     0.13%     0.30%
+## 5      KO          1.41%       0.54%     0.13%     0.38%
+## 6     JNJ          0.19%       0.15%     0.13%     0.14%
+## 7      PG          0.47%       0.24%     0.13%     0.20%
+## 8     DIS          0.62%       0.22%     0.13%     0.19%
+## 9     WMT          0.52%       0.25%     0.13%     0.21%
+## 10    XOM          0.44%       0.22%     0.13%     0.19%</code></pre>
 <pre class="r"><code>## 6.3. Optimizacion para retornos ajustados por confianza
 conf_adj &lt;- CML(mean_retornos = conf_adj_ret, var_cov = cov_mat, rf = t_bill_r)
 
@@ -1918,21 +2011,21 @@ comp_pesos &lt;- comp_pesos %&gt;%
     mutate(confianza = label_percent(accuracy = 0.01)(conf_adj[[&quot;weigths&quot;]]))
 print(comp_pesos)</code></pre>
 <pre><code>##      accion opinion_google opinion_dos benchmark confianza
-## AAPL   AAPL         18.50%      20.43%    20.78%    20.57%
-## MSFT   MSFT         18.34%      20.25%    20.59%    20.39%
-## AMZN   AMZN         14.09%      15.55%    15.82%    15.66%
-## GOOG   GOOG         24.72%      27.29%    15.47%    22.61%
-## KO       KO          3.48%       3.84%     3.90%     3.86%
-## JNJ     JNJ          5.33%       5.89%     5.99%     5.93%
-## PG       PG          4.23%       4.67%     4.74%     4.70%
-## DIS     DIS          3.39%      -6.66%     3.81%    -2.52%
-## WMT     WMT          4.54%       5.02%     5.10%     5.05%
-## XOM     XOM          3.38%       3.73%     3.80%     3.76%</code></pre>
+## AAPL   AAPL           &lt;NA&gt;        &lt;NA&gt;    20.78%      &lt;NA&gt;
+## MSFT   MSFT           &lt;NA&gt;        &lt;NA&gt;    20.59%      &lt;NA&gt;
+## AMZN   AMZN           &lt;NA&gt;        &lt;NA&gt;    15.82%      &lt;NA&gt;
+## GOOG   GOOG           &lt;NA&gt;        &lt;NA&gt;    15.47%      &lt;NA&gt;
+## KO       KO           &lt;NA&gt;        &lt;NA&gt;     3.90%      &lt;NA&gt;
+## JNJ     JNJ           &lt;NA&gt;        &lt;NA&gt;     5.99%      &lt;NA&gt;
+## PG       PG           &lt;NA&gt;        &lt;NA&gt;     4.74%      &lt;NA&gt;
+## DIS     DIS           &lt;NA&gt;        &lt;NA&gt;     3.81%      &lt;NA&gt;
+## WMT     WMT           &lt;NA&gt;        &lt;NA&gt;     5.10%      &lt;NA&gt;
+## XOM     XOM           &lt;NA&gt;        &lt;NA&gt;     3.80%      &lt;NA&gt;</code></pre>
 <pre class="r"><code>retornos &lt;- c(retornos,
               conf = label_percent(accuracy = 0.01)(conf_adj[[&quot;portfolio_return&quot;]]))
 retornos</code></pre>
 <pre><code>##  Benchmark Adj_google    Adj_dos       conf 
-##    &quot;1.00%&quot;    &quot;1.39%&quot;    &quot;1.16%&quot;    &quot;1.09%&quot;</code></pre>
+##    &quot;1.00%&quot;         NA         NA         NA</code></pre>
 
 
 
