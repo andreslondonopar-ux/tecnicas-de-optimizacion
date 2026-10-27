@@ -13,7 +13,8 @@
 
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, scales, xts, quantmod, zoo, PerformanceAnalytics)
-options(scipen = 999, width = 200, tibble.width = Inf, tibble.print_max = Inf)
+options(scipen = 999, width = 200)
+print_df <- function(x) print(as.data.frame(x), right = FALSE, row.names = FALSE)  # nombres de columna completos
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
   setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
@@ -39,7 +40,7 @@ cat("Acciones:", ncol(monthly_returns), "| Meses:", nrow(monthly_returns), "|",
 market_cap <- read_csv(archivo_cap, show_col_types = FALSE) %>% {setNames(.$market_cap, .$Symbol)}
 market_cap <- market_cap[colnames(monthly_returns)]
 bench_prop <- market_cap / sum(market_cap)
-print(tibble(Symbol = names(market_cap), `Market cap (USD)` = as.numeric(market_cap), Peso = percent(as.numeric(bench_prop), accuracy = 0.01)))
+print_df(tibble(Symbol = names(market_cap), `Market cap (USD)` = as.numeric(market_cap), Peso = percent(as.numeric(bench_prop), accuracy = 0.01)))
 
 t_bill_r <- 0.040430 / 12   # Rf anual 4.0430% pasada a mensual (mismo criterio que la clase: 0.016/12)
 bench_ret <- 0.01008        # retorno mensual del portafolio de referencia
@@ -66,7 +67,7 @@ cat("Factor normalizador:", as.double(BL_exp_ret$normalize_factor), "\n")
 cat("Retorno del portafolio de referencia con estos retornos esperados:", pct(as.double(bench_prop %*% exp_ret)), "\n")
 tabla1 <- tibble(Symbol = colnames(monthly_returns), `Peso referencia` = pct(as.numeric(bench_prop)),
                  `Retorno esperado (mensual)` = pct(as.numeric(exp_ret)))
-print(tabla1)
+print_df(tabla1)
 # Chequeo: optimizar con estos retornos devuelve los pesos de referencia
 print(round(cbind(CML = as.numeric(CML(exp_ret, cov_mat, t_bill_r)$weigths), referencia = as.numeric(bench_prop)), 4))
 
@@ -78,7 +79,7 @@ port_2 <- CML(ret_2, cov_mat, t_bill_r)
 tabla2 <- tibble(Symbol = colnames(monthly_returns), `Retorno referencia` = pct(as.numeric(exp_ret)),
                  `Retorno ajustado (NVDA +100 pb)` = pct(as.numeric(ret_2)),
                  `Peso referencia` = pct(as.numeric(bench_prop)), `Peso portafolio ajustado` = pct(as.numeric(port_2$weigths)))
-print(tabla2)
+print_df(tabla2)
 cat("Retorno esperado del nuevo portafolio:", pct(as.double(port_2$portfolio_return)), " | referencia:", pct(bench_ret), "\n")
 
 # Punto 3: matriz BLT ----
@@ -93,7 +94,7 @@ port_4 <- CML(ret_4, cov_mat, t_bill_r)
 tabla4 <- tibble(Symbol = colnames(monthly_returns), `Retorno referencia` = pct(as.numeric(exp_ret)),
                  `Retorno con 3 opiniones` = pct(as.numeric(ret_4)),
                  `Peso referencia` = pct(as.numeric(bench_prop)), `Peso portafolio ajustado` = pct(as.numeric(port_4$weigths)))
-print(tabla4)
+print_df(tabla4)
 cat("Retorno esperado del portafolio con 3 opiniones:", pct(as.double(port_4$portfolio_return)), "\n")
 
 # Punto 5 y Practica IV: confianza gamma = 0.7 en las opiniones ----
@@ -104,7 +105,7 @@ tabla5 <- tibble(Symbol = colnames(monthly_returns), `Retorno referencia` = pct(
                  `Retorno con 3 opiniones` = pct(as.numeric(ret_4)), `Retorno con confianza 0.7` = pct(as.numeric(ret_5)),
                  `Peso referencia` = pct(as.numeric(bench_prop)), `Peso 3 opiniones` = pct(as.numeric(port_4$weigths)),
                  `Peso con confianza 0.7` = pct(as.numeric(port_5$weigths)))
-print(tabla5)
+print_df(tabla5)
 resumen <- c(Referencia = pct(bench_ret), `NVDA +100pb` = pct(as.double(port_2$portfolio_return)),
              `3 opiniones` = pct(as.double(port_4$portfolio_return)), `Confianza 0.7` = pct(as.double(port_5$portfolio_return)))
 print(resumen)

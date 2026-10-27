@@ -1585,7 +1585,8 @@ if (!require(&quot;pacman&quot;)) install.packages(&quot;pacman&quot;)</code></p
 <pre><code>## Cargando paquete requerido: pacman</code></pre>
 <pre><code>## Warning: package &#39;pacman&#39; was built under R version 4.5.2</code></pre>
 <pre class="r"><code>pacman::p_load(tidyverse, scales, xts, quantmod, zoo, PerformanceAnalytics)
-options(scipen = 999, width = 200, tibble.width = Inf, tibble.print_max = Inf)
+options(scipen = 999, width = 200)
+print_df &lt;- function(x) print(as.data.frame(x), right = FALSE, row.names = FALSE)  # nombres de columna completos
 if (requireNamespace(&quot;rstudioapi&quot;, quietly = TRUE) &amp;&amp; rstudioapi::isAvailable())
   setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
@@ -1611,20 +1612,18 @@ cat(&quot;Acciones:&quot;, ncol(monthly_returns), &quot;| Meses:&quot;, nrow(mon
 <pre class="r"><code>market_cap &lt;- read_csv(archivo_cap, show_col_types = FALSE) %&gt;% {setNames(.$market_cap, .$Symbol)}
 market_cap &lt;- market_cap[colnames(monthly_returns)]
 bench_prop &lt;- market_cap / sum(market_cap)
-print(tibble(Symbol = names(market_cap), `Market cap (USD)` = as.numeric(market_cap), Peso = percent(as.numeric(bench_prop), accuracy = 0.01)))</code></pre>
-<pre><code>## # A tibble: 10 × 3
-##    Symbol `Market cap (USD)` Peso  
-##    &lt;chr&gt;               &lt;dbl&gt; &lt;chr&gt; 
-##  1 AAPL        5065640247296 24.42%
-##  2 AVGO        1634156675072 7.88% 
-##  3 LLY         1143132258304 5.51% 
-##  4 MSFT        3945415311360 19.02%
-##  5 NVDA        5262596898816 25.37%
-##  6 ORCL         395701813248 1.91% 
-##  7 PG           369060577280 1.78% 
-##  8 TSLA        1610579312640 7.76% 
-##  9 UNH          368363962368 1.78% 
-## 10 WMT          949557985280 4.58%</code></pre>
+print_df(tibble(Symbol = names(market_cap), `Market cap (USD)` = as.numeric(market_cap), Peso = percent(as.numeric(bench_prop), accuracy = 0.01)))</code></pre>
+<pre><code>##  Symbol Market cap (USD) Peso  
+##  AAPL   5065640247296    24.42%
+##  AVGO   1634156675072    7.88% 
+##  LLY    1143132258304    5.51% 
+##  MSFT   3945415311360    19.02%
+##  NVDA   5262596898816    25.37%
+##  ORCL    395701813248    1.91% 
+##  PG      369060577280    1.78% 
+##  TSLA   1610579312640    7.76% 
+##  UNH     368363962368    1.78% 
+##  WMT     949557985280    4.58%</code></pre>
 <pre class="r"><code>t_bill_r &lt;- 0.040430 / 12   # Rf anual 4.0430% pasada a mensual (mismo criterio que la clase: 0.016/12)
 bench_ret &lt;- 0.01008        # retorno mensual del portafolio de referencia
 cov_mat &lt;- cov(monthly_returns)
@@ -1652,20 +1651,18 @@ cat(&quot;Factor normalizador:&quot;, as.double(BL_exp_ret$normalize_factor), &q
 <pre><code>## Retorno del portafolio de referencia con estos retornos esperados: 1.01%</code></pre>
 <pre class="r"><code>tabla1 &lt;- tibble(Symbol = colnames(monthly_returns), `Peso referencia` = pct(as.numeric(bench_prop)),
                  `Retorno esperado (mensual)` = pct(as.numeric(exp_ret)))
-print(tabla1)</code></pre>
-<pre><code>## # A tibble: 10 × 3
-##    Symbol `Peso referencia` `Retorno esperado (mensual)`
-##    &lt;chr&gt;  &lt;chr&gt;             &lt;chr&gt;                       
-##  1 AAPL   24.42%            0.95%                       
-##  2 AVGO   7.88%             0.91%                       
-##  3 LLY    5.51%             0.47%                       
-##  4 MSFT   19.02%            0.84%                       
-##  5 NVDA   25.37%            1.43%                       
-##  6 ORCL   1.91%             0.87%                       
-##  7 PG     1.78%             0.42%                       
-##  8 TSLA   7.76%             1.29%                       
-##  9 UNH    1.78%             0.46%                       
-## 10 WMT    4.58%             0.50%</code></pre>
+print_df(tabla1)</code></pre>
+<pre><code>##  Symbol Peso referencia Retorno esperado (mensual)
+##  AAPL   24.42%          0.95%                     
+##  AVGO   7.88%           0.91%                     
+##  LLY    5.51%           0.47%                     
+##  MSFT   19.02%          0.84%                     
+##  NVDA   25.37%          1.43%                     
+##  ORCL   1.91%           0.87%                     
+##  PG     1.78%           0.42%                     
+##  TSLA   7.76%           1.29%                     
+##  UNH    1.78%           0.46%                     
+##  WMT    4.58%           0.50%</code></pre>
 <pre class="r"><code># Chequeo: optimizar con estos retornos devuelve los pesos de referencia
 print(round(cbind(CML = as.numeric(CML(exp_ret, cov_mat, t_bill_r)$weigths), referencia = as.numeric(bench_prop)), 4))</code></pre>
 <pre><code>##          CML referencia
@@ -1687,20 +1684,18 @@ port_2 &lt;- CML(ret_2, cov_mat, t_bill_r)
 tabla2 &lt;- tibble(Symbol = colnames(monthly_returns), `Retorno referencia` = pct(as.numeric(exp_ret)),
                  `Retorno ajustado (NVDA +100 pb)` = pct(as.numeric(ret_2)),
                  `Peso referencia` = pct(as.numeric(bench_prop)), `Peso portafolio ajustado` = pct(as.numeric(port_2$weigths)))
-print(tabla2)</code></pre>
-<pre><code>## # A tibble: 10 × 5
-##    Symbol `Retorno referencia` `Retorno ajustado (NVDA +100 pb)` `Peso referencia` `Peso portafolio ajustado`
-##    &lt;chr&gt;  &lt;chr&gt;                &lt;chr&gt;                             &lt;chr&gt;             &lt;chr&gt;                     
-##  1 AAPL   0.95%                1.28%                             24.42%            17.15%                    
-##  2 AVGO   0.91%                1.25%                             7.88%             5.53%                     
-##  3 LLY    0.47%                0.49%                             5.51%             3.87%                     
-##  4 MSFT   0.84%                1.15%                             19.02%            13.36%                    
-##  5 NVDA   1.43%                2.43%                             25.37%            47.59%                    
-##  6 ORCL   0.87%                1.21%                             1.91%             1.34%                     
-##  7 PG     0.42%                0.42%                             1.78%             1.25%                     
-##  8 TSLA   1.29%                1.72%                             7.76%             5.45%                     
-##  9 UNH    0.46%                0.48%                             1.78%             1.25%                     
-## 10 WMT    0.50%                0.57%                             4.58%             3.21%</code></pre>
+print_df(tabla2)</code></pre>
+<pre><code>##  Symbol Retorno referencia Retorno ajustado (NVDA +100 pb) Peso referencia Peso portafolio ajustado
+##  AAPL   0.95%              1.28%                           24.42%          17.15%                  
+##  AVGO   0.91%              1.25%                           7.88%           5.53%                   
+##  LLY    0.47%              0.49%                           5.51%           3.87%                   
+##  MSFT   0.84%              1.15%                           19.02%          13.36%                  
+##  NVDA   1.43%              2.43%                           25.37%          47.59%                  
+##  ORCL   0.87%              1.21%                           1.91%           1.34%                   
+##  PG     0.42%              0.42%                           1.78%           1.25%                   
+##  TSLA   1.29%              1.72%                           7.76%           5.45%                   
+##  UNH    0.46%              0.48%                           1.78%           1.25%                   
+##  WMT    0.50%              0.57%                           4.58%           3.21%</code></pre>
 <pre class="r"><code>cat(&quot;Retorno esperado del nuevo portafolio:&quot;, pct(as.double(port_2$portfolio_return)), &quot; | referencia:&quot;, pct(bench_ret), &quot;\n&quot;)</code></pre>
 <pre><code>## Retorno esperado del nuevo portafolio: 1.75%  | referencia: 1.01%</code></pre>
 <pre class="r"><code># Punto 3: matriz BLT ----
@@ -1725,20 +1720,18 @@ port_4 &lt;- CML(ret_4, cov_mat, t_bill_r)
 tabla4 &lt;- tibble(Symbol = colnames(monthly_returns), `Retorno referencia` = pct(as.numeric(exp_ret)),
                  `Retorno con 3 opiniones` = pct(as.numeric(ret_4)),
                  `Peso referencia` = pct(as.numeric(bench_prop)), `Peso portafolio ajustado` = pct(as.numeric(port_4$weigths)))
-print(tabla4)</code></pre>
-<pre><code>## # A tibble: 10 × 5
-##    Symbol `Retorno referencia` `Retorno con 3 opiniones` `Peso referencia` `Peso portafolio ajustado`
-##    &lt;chr&gt;  &lt;chr&gt;                &lt;chr&gt;                     &lt;chr&gt;             &lt;chr&gt;                     
-##  1 AAPL   0.95%                1.26%                     24.42%            9.35%                     
-##  2 AVGO   0.91%                0.78%                     7.88%             -19.43%                   
-##  3 LLY    0.47%                1.90%                     5.51%             70.06%                    
-##  4 MSFT   0.84%                1.07%                     19.02%            7.28%                     
-##  5 NVDA   1.43%                2.03%                     25.37%            25.93%                    
-##  6 ORCL   0.87%                1.01%                     1.91%             0.73%                     
-##  7 PG     0.42%                0.53%                     1.78%             0.68%                     
-##  8 TSLA   1.29%                1.45%                     7.76%             2.97%                     
-##  9 UNH    0.46%                0.72%                     1.78%             0.68%                     
-## 10 WMT    0.50%                0.66%                     4.58%             1.75%</code></pre>
+print_df(tabla4)</code></pre>
+<pre><code>##  Symbol Retorno referencia Retorno con 3 opiniones Peso referencia Peso portafolio ajustado
+##  AAPL   0.95%              1.26%                   24.42%          9.35%                   
+##  AVGO   0.91%              0.78%                   7.88%           -19.43%                 
+##  LLY    0.47%              1.90%                   5.51%           70.06%                  
+##  MSFT   0.84%              1.07%                   19.02%          7.28%                   
+##  NVDA   1.43%              2.03%                   25.37%          25.93%                  
+##  ORCL   0.87%              1.01%                   1.91%           0.73%                   
+##  PG     0.42%              0.53%                   1.78%           0.68%                   
+##  TSLA   1.29%              1.45%                   7.76%           2.97%                   
+##  UNH    0.46%              0.72%                   1.78%           0.68%                   
+##  WMT    0.50%              0.66%                   4.58%           1.75%</code></pre>
 <pre class="r"><code>cat(&quot;Retorno esperado del portafolio con 3 opiniones:&quot;, pct(as.double(port_4$portfolio_return)), &quot;\n&quot;)</code></pre>
 <pre><code>## Retorno esperado del portafolio con 3 opiniones: 1.97%</code></pre>
 <pre class="r"><code># Punto 5 y Practica IV: confianza gamma = 0.7 en las opiniones ----
@@ -1749,20 +1742,18 @@ tabla5 &lt;- tibble(Symbol = colnames(monthly_returns), `Retorno referencia` = p
                  `Retorno con 3 opiniones` = pct(as.numeric(ret_4)), `Retorno con confianza 0.7` = pct(as.numeric(ret_5)),
                  `Peso referencia` = pct(as.numeric(bench_prop)), `Peso 3 opiniones` = pct(as.numeric(port_4$weigths)),
                  `Peso con confianza 0.7` = pct(as.numeric(port_5$weigths)))
-print(tabla5)</code></pre>
-<pre><code>## # A tibble: 10 × 7
-##    Symbol `Retorno referencia` `Retorno con 3 opiniones` `Retorno con confianza 0.7` `Peso referencia` `Peso 3 opiniones` `Peso con confianza 0.7`
-##    &lt;chr&gt;  &lt;chr&gt;                &lt;chr&gt;                     &lt;chr&gt;                       &lt;chr&gt;             &lt;chr&gt;              &lt;chr&gt;                   
-##  1 AAPL   0.95%                1.26%                     1.17%                       24.42%            9.35%              11.47%                  
-##  2 AVGO   0.91%                0.78%                     0.82%                       7.88%             -19.43%            -15.58%                 
-##  3 LLY    0.47%                1.90%                     1.47%                       5.51%             70.06%             60.96%                  
-##  4 MSFT   0.84%                1.07%                     1.00%                       19.02%            7.28%              8.93%                   
-##  5 NVDA   1.43%                2.03%                     1.85%                       25.37%            25.93%             25.85%                  
-##  6 ORCL   0.87%                1.01%                     0.97%                       1.91%             0.73%              0.90%                   
-##  7 PG     0.42%                0.53%                     0.49%                       1.78%             0.68%              0.84%                   
-##  8 TSLA   1.29%                1.45%                     1.40%                       7.76%             2.97%              3.65%                   
-##  9 UNH    0.46%                0.72%                     0.64%                       1.78%             0.68%              0.83%                   
-## 10 WMT    0.50%                0.66%                     0.61%                       4.58%             1.75%              2.15%</code></pre>
+print_df(tabla5)</code></pre>
+<pre><code>##  Symbol Retorno referencia Retorno con 3 opiniones Retorno con confianza 0.7 Peso referencia Peso 3 opiniones Peso con confianza 0.7
+##  AAPL   0.95%              1.26%                   1.17%                     24.42%          9.35%            11.47%                
+##  AVGO   0.91%              0.78%                   0.82%                     7.88%           -19.43%          -15.58%               
+##  LLY    0.47%              1.90%                   1.47%                     5.51%           70.06%           60.96%                
+##  MSFT   0.84%              1.07%                   1.00%                     19.02%          7.28%            8.93%                 
+##  NVDA   1.43%              2.03%                   1.85%                     25.37%          25.93%           25.85%                
+##  ORCL   0.87%              1.01%                   0.97%                     1.91%           0.73%            0.90%                 
+##  PG     0.42%              0.53%                   0.49%                     1.78%           0.68%            0.84%                 
+##  TSLA   1.29%              1.45%                   1.40%                     7.76%           2.97%            3.65%                 
+##  UNH    0.46%              0.72%                   0.64%                     1.78%           0.68%            0.83%                 
+##  WMT    0.50%              0.66%                   0.61%                     4.58%           1.75%            2.15%</code></pre>
 <pre class="r"><code>resumen &lt;- c(Referencia = pct(bench_ret), `NVDA +100pb` = pct(as.double(port_2$portfolio_return)),
              `3 opiniones` = pct(as.double(port_4$portfolio_return)), `Confianza 0.7` = pct(as.double(port_5$portfolio_return)))
 print(resumen)</code></pre>
